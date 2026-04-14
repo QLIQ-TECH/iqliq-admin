@@ -601,9 +601,7 @@ export default function AddProductPage() {
       uploadPromises.push(
         fetch(`${process.env.NEXT_PUBLIC_MEDIA_API_URL || 'http://localhost:5005/api'}/upload/image`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${tokens?.accessToken}`
-          },
+          headers: tokens ? { 'Authorization': `Bearer ${tokens}` } : {},
           body: formData
         }).then(response => response.json())
       );

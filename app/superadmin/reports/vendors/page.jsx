@@ -40,11 +40,7 @@ export default function VendorReportsPage() {
   const getAuthToken = () => {
     if (typeof window !== 'undefined') {
       try {
-        const storedTokens = localStorage.getItem('qliq-admin-tokens');
-        if (storedTokens) {
-          const tokens = JSON.parse(storedTokens);
-          return tokens.accessToken;
-        }
+        return localStorage.getItem('qliq-admin-access-token');
       } catch (err) {
         console.error('Error getting token:', err);
       }
