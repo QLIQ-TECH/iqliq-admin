@@ -54,8 +54,49 @@ export const AuthProvider = ({ children }) => {
             setIsLoading(false);
           }
         } else {
-          console.log('❌ No saved session found');
-          setIsLoading(false);
+          const vendorAccess = localStorage.getItem('access_token');
+          const vendorRefresh = localStorage.getItem('refresh_token');
+          if (vendorAccess && vendorRefresh) {
+            try {
+              const response = await apiService.getProfile(vendorAccess);
+              const userData = response.user || {};
+
+              let frontendRole = 'vendor';
+              if (userData.role === 'admin' || userData.role === 'manager' || userData.role === 'super_admin') {
+                frontendRole = 'superadmin';
+              }
+
+              const onboardingCompletedLocal = localStorage.getItem('onboarding_completed') === 'true';
+              const normalizedUserId = userData.id || userData._id;
+              const frontendUserData = {
+                id: normalizedUserId,
+                email: userData.email,
+                name: userData.name,
+                role: frontendRole,
+                avatar: (userData.name || 'U').charAt(0).toUpperCase(),
+                phone: userData.phone,
+                cognitoUserId: userData.cognitoUserId,
+                vendorId: userData.vendorId || normalizedUserId,
+                onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? true,
+              };
+              const tokenData = {
+                accessToken: vendorAccess,
+                refreshToken: vendorRefresh,
+              };
+
+              setUser(frontendUserData);
+              setTokens(tokenData);
+              localStorage.setItem('qliq-admin-user', JSON.stringify(frontendUserData));
+              localStorage.setItem('qliq-admin-tokens', JSON.stringify(tokenData));
+              setIsLoading(false);
+            } catch (e) {
+              console.error('Vendor token adoption failed:', e);
+              setIsLoading(false);
+            }
+          } else {
+            console.log('❌ No saved session found');
+            setIsLoading(false);
+          }
         }
       } else {
         setIsLoading(false);
@@ -77,6 +118,8 @@ export const AuthProvider = ({ children }) => {
         frontendRole = 'superadmin';
       }
       
+      const onboardingCompletedLocal =
+        typeof window !== 'undefined' && localStorage.getItem('onboarding_completed') === 'true';
       const normalizedUserId = userData.id || userData._id;
       const frontendUserData = {
         id: normalizedUserId,
@@ -87,6 +130,7 @@ export const AuthProvider = ({ children }) => {
         phone: userData.phone,
         cognitoUserId: userData.cognitoUserId,
         vendorId: userData.vendorId || normalizedUserId, // Add vendorId field
+        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? true,
       };
       
       setUser(frontendUserData);
@@ -114,8 +158,18 @@ export const AuthProvider = ({ children }) => {
     
     // Clear localStorage
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('qliq-admin-user');
-      localStorage.removeItem('qliq-admin-tokens');
+      const keysToRemove = [
+        'qliq-admin-user',
+        'qliq-admin-tokens',
+        'access_token',
+        'refresh_token',
+        'email',
+        'id',
+        'role',
+        'onboarding_completed',
+      ];
+
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
     }
   };
 

@@ -12,10 +12,14 @@ export default function Login() {
   useEffect(() => {
     // Redirect to appropriate dashboard if already logged in
     if (user && !isLoading) {
+      if (user.role === 'vendor' && user.onboardingCompleted === false) {
+        window.location.assign('/onboarding');
+        return;
+      }
       if (user.role === 'superadmin') {
-        router.push('/admin');
+        router.replace('/admin');
       } else if (user.role === 'vendor') {
-        router.push('/vendor');
+        router.replace('/vendor');
       }
     }
   }, [user, isLoading, router]);
