@@ -1,5 +1,19 @@
 /** @type {import('next').NextConfig} */
+const vendorOnboardingUrl = process.env.NEXT_PUBLIC_VENDOR_ONBOARDING_URL || 'https://vendor.iqliq.ae';
+
 const nextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: '/onboarding',
+        destination: vendorOnboardingUrl,
+      },
+      {
+        source: '/onboarding/:path*',
+        destination: `${vendorOnboardingUrl}/:path*`,
+      },
+    ];
+  },
   // App directory is now stable in Next.js 14, no need for experimental flag
   images: {
     domains: [

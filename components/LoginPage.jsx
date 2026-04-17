@@ -148,6 +148,15 @@ const LoginPage = () => {
               </Button>
             </form>
 
+            <div className="mt-4">
+              <a
+                href="/onboarding/login"
+                className="block w-full text-center py-3 px-4 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
+              >
+                Vendor Onboarding
+              </a>
+            </div>
+
             {/* Demo Credentials */}
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <h4 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h4>
