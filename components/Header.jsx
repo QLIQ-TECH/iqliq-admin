@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, Search, Bell, User } from 'lucide-react';
+import { Menu, Search, Bell } from 'lucide-react';
 
 const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
   return (
@@ -15,9 +15,12 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
           </button>
           
           <div className="hidden lg:block">
-            <h1 className="text-2xl font-bold text-gray-900">
-              {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Vendor Dashboard'}
-            </h1>
+            <div className="leading-tight">
+              <h1 className="text-2xl font-bold text-gray-900">IQLIQ</h1>
+              <p className="text-sm text-gray-600">
+                {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Vendor Dashboard'}
+              </p>
+            </div>
           </div>
         </div>
 

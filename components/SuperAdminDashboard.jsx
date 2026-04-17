@@ -78,11 +78,7 @@ const SuperAdminDashboard = () => {
       let accessToken = null;
       if (typeof window !== 'undefined') {
         try {
-          const storedTokens = localStorage.getItem('qliq-admin-tokens');
-          if (storedTokens) {
-            const tokens = JSON.parse(storedTokens);
-            accessToken = tokens.accessToken;
-          }
+          accessToken = localStorage.getItem('qliq-admin-access-token');
         } catch (err) {
           console.error('Error getting token from localStorage:', err);
         }
@@ -166,11 +162,7 @@ const SuperAdminDashboard = () => {
   const getAuthToken = () => {
     if (typeof window !== 'undefined') {
       try {
-        const storedTokens = localStorage.getItem('qliq-admin-tokens');
-        if (storedTokens) {
-          const tokens = JSON.parse(storedTokens);
-          return tokens.accessToken;
-        }
+        return localStorage.getItem('qliq-admin-access-token');
       } catch (err) {
         console.error('Error getting token:', err);
       }
@@ -426,7 +418,7 @@ const SuperAdminDashboard = () => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold mb-2">Good Morning!</h2>
-            <p className="text-blue-100">Welcome to the QLIQ Super Admin Dashboard</p>
+            <p className="text-blue-100">Welcome to the IQLIQ Super Admin Dashboard</p>
             {/* <p className="text-blue-200 text-sm mt-1">Multi-vendor marketplace management</p> */}
             {lastUpdated && (
               <div className="flex items-center mt-2 text-blue-200 text-xs">
