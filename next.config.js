@@ -1,16 +1,28 @@
 /** @type {import('next').NextConfig} */
-const vendorOnboardingUrl = process.env.NEXT_PUBLIC_VENDOR_ONBOARDING_URL || 'https://vendor.iqliq.ae';
+const rawVendorOnboardingUrl =
+  process.env.NEXT_PUBLIC_VENDOR_ONBOARDING_URL || 'https://vendor.iqliq.ae/onboarding';
+const normalizedVendorOnboardingUrl = rawVendorOnboardingUrl.replace(/\/$/, '');
+const vendorOnboardingBaseUrl = normalizedVendorOnboardingUrl.endsWith('/onboarding')
+  ? normalizedVendorOnboardingUrl
+  : `${normalizedVendorOnboardingUrl}/onboarding`;
+const vendorOnboardingOriginUrl = vendorOnboardingBaseUrl.endsWith('/onboarding')
+  ? vendorOnboardingBaseUrl.slice(0, -'/onboarding'.length)
+  : vendorOnboardingBaseUrl;
 
 const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/onboarding/assets/:path*',
+        destination: `${vendorOnboardingOriginUrl}/assets/:path*`,
+      },
+      {
         source: '/onboarding',
-        destination: vendorOnboardingUrl,
+        destination: vendorOnboardingBaseUrl,
       },
       {
         source: '/onboarding/:path*',
-        destination: `${vendorOnboardingUrl}/:path*`,
+        destination: `${vendorOnboardingBaseUrl}/:path*`,
       },
     ];
   },
