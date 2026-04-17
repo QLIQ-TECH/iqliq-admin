@@ -246,10 +246,7 @@ export default function CreateGigDrawer({
 
   const getAdminToken = () => {
     try {
-      const tokensData = localStorage.getItem('qliq-admin-tokens');
-      if (!tokensData) return null;
-      const tokens = JSON.parse(tokensData);
-      return tokens?.accessToken || null;
+      return localStorage.getItem('qliq-admin-access-token');
     } catch {
       return null;
     }

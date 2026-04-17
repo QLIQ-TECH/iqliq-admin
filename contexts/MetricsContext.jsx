@@ -31,11 +31,7 @@ export const MetricsProvider = ({ children }) => {
       
       if (typeof window !== 'undefined') {
         try {
-          const storedTokens = localStorage.getItem('qliq-admin-tokens');
-          if (storedTokens) {
-            const tokens = JSON.parse(storedTokens);
-            accessToken = tokens.accessToken;
-          }
+          accessToken = localStorage.getItem('qliq-admin-access-token');
         } catch (err) {
           console.error('Error getting token from localStorage:', err);
         }

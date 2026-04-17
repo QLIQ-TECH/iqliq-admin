@@ -7,8 +7,9 @@ import Sidebar from '../../../../components/Sidebar';
 import Header from '../../../../components/Header';
 import FormInput from '../../../../components/shared/FormInput';
 import FormSelect from '../../../../components/shared/FormSelect';
-import { Store, Save, Upload, Plus, Eye, Edit, MapPin, Phone, Mail, Star, ShoppingBag, DollarSign } from 'lucide-react';
+import { Store, Save, Upload, Plus, Eye, Edit, MapPin, Phone, Mail, Star, ShoppingBag, DollarSign, X } from 'lucide-react';
 import vendorProfileService from '../../../../lib/services/vendorProfileService';
+import storeService from '../../../../lib/services/storeService';
 
 export default function StoreProfilePage() {
   const { user, isLoading, logout } = useAuth();
@@ -47,6 +48,23 @@ export default function StoreProfilePage() {
   const [saving, setSaving] = useState(false);
   const [stores, setStores] = useState([]);
   const [storesLoading, setStoresLoading] = useState(false);
+  const [showCreateStoreModal, setShowCreateStoreModal] = useState(false);
+  const [isCreatingStore, setIsCreatingStore] = useState(false);
+  const [newStoreData, setNewStoreData] = useState({
+    name: '',
+    description: '',
+    logo: '',
+    banner: '',
+    email: '',
+    phone: '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      country: '',
+      postalCode: ''
+    }
+  });
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -72,7 +90,8 @@ export default function StoreProfilePage() {
       console.log('📊 Store profile response:', response);
       
       const profileData = response.data || response;
-      if (profileData) {
+      if (profileData && Object.keys(profileData).length > 0) {
+        console.log('📋 Setting profile data:', profileData);
         setFormData({
           storeName: profileData.storeName || '',
           storeDescription: profileData.storeDescription || '',
@@ -102,10 +121,17 @@ export default function StoreProfilePage() {
             linkedin: ''
           }
         });
+      } else {
+        console.log('📋 No profile data found or empty response, using defaults');
       }
     } catch (error) {
       console.error('❌ Error fetching store profile:', error);
-      // Use default data on error
+      console.error('❌ Full error details:', error.response?.data || error);
+      
+      // Check if it's a 404 - might be that the profile doesn't exist yet
+      if (error.response?.status === 404) {
+        console.log('📋 Store profile not found (404), using empty form for initial setup');
+      }
     } finally {
       setLoading(false);
     }
@@ -116,11 +142,25 @@ export default function StoreProfilePage() {
       setStoresLoading(true);
       console.log('🏪 Fetching stores for vendor:', user?.vendorId || user?.id);
       
-      const response = await vendorProfileService.getVendorStores(user?.vendorId || user?.id);
+      // Use storeService instead of vendorProfileService for better reliability
+      const response = await storeService.getStoresByVendor(user?.vendorId || user?.id, true);
       console.log('📊 Vendor stores response:', response);
       
-      const storesData = response.data || response || [];
-      setStores(Array.isArray(storesData) ? storesData : []);
+      // Extract store data from various possible response structures
+      let storesData = [];
+      if (Array.isArray(response)) {
+        storesData = response;
+      } else if (response?.data?.data?.stores && Array.isArray(response.data.data.stores)) {
+        storesData = response.data.data.stores;
+      } else if (response?.data?.stores && Array.isArray(response.data.stores)) {
+        storesData = response.data.stores;
+      } else if (response?.data && Array.isArray(response.data)) {
+        storesData = response.data;
+      } else if (response?.stores && Array.isArray(response.stores)) {
+        storesData = response.stores;
+      }
+      
+      setStores(storesData);
     } catch (error) {
       console.error('❌ Error fetching vendor stores:', error);
       setStores([]);
@@ -138,12 +178,89 @@ export default function StoreProfilePage() {
       const response = await vendorProfileService.updateVendorStoreProfile(formData);
       console.log('✅ Store profile updated:', response);
       
+      // Force refresh the profile data after successful update
+      await fetchStoreProfile();
+      
       alert('Store profile updated successfully!');
     } catch (error) {
       console.error('❌ Error updating store profile:', error);
-      alert('Failed to update store profile. Please try again.');
+      console.error('❌ Full error details:', error.response?.data || error);
+      
+      // Check if it's an API endpoint issue
+      if (error.response?.status === 404 || error.message?.includes('404')) {
+        alert('Store profile API endpoint not found. Please contact support.');
+      } else if (error.response?.status === 401) {
+        alert('You are not authorized to update this profile. Please login again.');
+      } else {
+        alert(`Failed to update store profile: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+      }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCreateStore = async () => {
+    try {
+      setIsCreatingStore(true);
+      
+      const storeDataToSubmit = {
+        ...newStoreData,
+        ownerId: user?.vendorId || user?.id,
+        isActive: true
+      };
+      
+      console.log('Creating store with data:', storeDataToSubmit);
+      
+      const response = await storeService.createStore(storeDataToSubmit);
+      console.log('Store created response:', response);
+      
+      // Refresh stores list
+      await fetchVendorStores();
+      
+      // Close modal and reset form
+      setShowCreateStoreModal(false);
+      setNewStoreData({
+        name: '',
+        description: '',
+        logo: '',
+        banner: '',
+        email: '',
+        phone: '',
+        address: {
+          street: '',
+          city: '',
+          state: '',
+          country: '',
+          postalCode: ''
+        }
+      });
+      
+      alert('Store created successfully!');
+    } catch (error) {
+      console.error('Error creating store:', error);
+      alert('Error creating store: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsCreatingStore(false);
+    }
+  };
+
+  const handleNewStoreInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    if (name.startsWith('address.')) {
+      const addressField = name.split('.')[1];
+      setNewStoreData(prev => ({
+        ...prev,
+        address: {
+          ...prev.address,
+          [addressField]: value
+        }
+      }));
+    } else {
+      setNewStoreData(prev => ({
+        ...prev,
+        [name]: value
+      }));
     }
   };
 
@@ -165,6 +282,7 @@ export default function StoreProfilePage() {
         onToggle={() => setSidebarOpen(!sidebarOpen)} 
         userType="vendor"
         onLogout={logout}
+        user={user}
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -318,7 +436,10 @@ export default function StoreProfilePage() {
                 <h2 className="text-xl font-bold text-gray-900">Your Stores</h2>
                 <p className="text-gray-600 mt-1">Manage your store locations and information</p>
               </div>
-              <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <button 
+                onClick={() => setShowCreateStoreModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
                 <Plus className="w-4 h-4" />
                 <span>Add Store</span>
               </button>
@@ -341,7 +462,10 @@ export default function StoreProfilePage() {
                 <p className="text-gray-600 mb-4">
                   You don't have any stores yet. Create your first store to get started.
                 </p>
-                <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto">
+                <button 
+                  onClick={() => setShowCreateStoreModal(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto"
+                >
                   <Plus className="w-4 h-4" />
                   <span>Create Your First Store</span>
                 </button>
@@ -474,6 +598,187 @@ export default function StoreProfilePage() {
           </div>
         </main>
       </div>
+
+      {/* Create Store Modal */}
+      {showCreateStoreModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Create New Store</h2>
+                <button 
+                  onClick={() => setShowCreateStoreModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form onSubmit={(e) => { e.preventDefault(); handleCreateStore(); }} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={newStoreData.name}
+                      onChange={handleNewStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Enter store name"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Description
+                    </label>
+                    <textarea
+                      name="description"
+                      value={newStoreData.description}
+                      onChange={handleNewStoreInputChange}
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Describe your store"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Logo URL
+                    </label>
+                    <input
+                      type="url"
+                      name="logo"
+                      value={newStoreData.logo}
+                      onChange={handleNewStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com/logo.png"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Banner URL
+                    </label>
+                    <input
+                      type="url"
+                      name="banner"
+                      value={newStoreData.banner}
+                      onChange={handleNewStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com/banner.png"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Email
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={newStoreData.email}
+                      onChange={handleNewStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="store@example.com"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Phone
+                    </label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={newStoreData.phone}
+                      onChange={handleNewStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="+1234567890"
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Store Address</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <input
+                          type="text"
+                          name="address.street"
+                          value={newStoreData.address.street}
+                          onChange={handleNewStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Street Address"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.city"
+                          value={newStoreData.address.city}
+                          onChange={handleNewStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="City"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.state"
+                          value={newStoreData.address.state}
+                          onChange={handleNewStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="State/Province"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.country"
+                          value={newStoreData.address.country}
+                          onChange={handleNewStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Country"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.postalCode"
+                          value={newStoreData.address.postalCode}
+                          onChange={handleNewStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Postal Code"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateStoreModal(false)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreatingStore || !newStoreData.name}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isCreatingStore ? 'Creating...' : 'Create Store'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

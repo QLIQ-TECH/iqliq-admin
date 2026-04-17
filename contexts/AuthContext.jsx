@@ -1,10 +1,12 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import Cookies from 'js-cookie';
 import apiService from '../lib/api-debug';
+import { authApi, REFRESH_TOKEN_KEY } from '../lib/apiClient';
 
 const AuthContext = createContext();
+const ACCESS_TOKEN_KEY = 'qliq-admin-access-token';
+const USER_KEY = 'qliq-admin-user';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -19,33 +21,44 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [tokens, setTokens] = useState(null);
 
+  const withTimeout = (promise, timeoutMs) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs)
+      ),
+    ]);
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       // Small delay to ensure localStorage is ready
       await new Promise(resolve => setTimeout(resolve, 100));
       
       if (typeof window !== 'undefined') {
-        const savedUser = localStorage.getItem('qliq-admin-user');
-        const savedTokens = localStorage.getItem('qliq-admin-tokens');
+        const savedUser = localStorage.getItem(USER_KEY);
+        const savedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
         
         console.log('🔄 Restoring session from localStorage:', {
           hasUser: !!savedUser,
-          hasTokens: !!savedTokens
+          hasToken: !!savedToken
         });
         
-        if (savedUser && savedTokens) {
+        if (savedUser && savedToken) {
           try {
             const userData = JSON.parse(savedUser);
-            const tokenData = JSON.parse(savedTokens);
             
             console.log('✅ Session restored successfully:', userData.email);
             setUser(userData);
-            setTokens(tokenData);
+            setTokens({
+              accessToken: savedToken,
+              refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY) || null,
+            });
             setIsLoading(false);
             
             // Optionally verify token in background (don't wait for it)
             // Only clear session if explicitly unauthorized
-            verifyToken(tokenData.accessToken).catch(err => {
+            verifyToken(savedToken).catch((err) => {
               console.log('Background token verification failed:', err);
             });
           } catch (error) {
@@ -54,8 +67,22 @@ export const AuthProvider = ({ children }) => {
             setIsLoading(false);
           }
         } else {
-          console.log('❌ No saved session found');
-          setIsLoading(false);
+          const vendorAccess = localStorage.getItem('access_token');
+          const vendorRefresh = localStorage.getItem('refresh_token');
+          if (vendorAccess && vendorRefresh) {
+            try {
+              localStorage.setItem(ACCESS_TOKEN_KEY, vendorAccess);
+              localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
+              await verifyToken(vendorAccess);
+              setIsLoading(false);
+            } catch (e) {
+              console.error('Vendor token adoption failed:', e);
+              setIsLoading(false);
+            }
+          } else {
+            console.log('❌ No saved session found');
+            setIsLoading(false);
+          }
         }
       } else {
         setIsLoading(false);
@@ -67,8 +94,11 @@ export const AuthProvider = ({ children }) => {
 
   const verifyToken = async (accessToken) => {
     try {
-      const response = await apiService.getProfile(accessToken);
-      // Token is valid, user data is up to date
+      if (typeof window !== 'undefined' && accessToken) {
+        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+      }
+
+      const response = await withTimeout(authApi.get('/profile'), 4000);
       const userData = response.user;
       
       // Map backend roles to frontend roles
@@ -78,6 +108,8 @@ export const AuthProvider = ({ children }) => {
       }
       
       const normalizedUserId = userData.id || userData._id;
+      const onboardingCompletedLocal =
+        typeof window !== 'undefined' && localStorage.getItem('onboarding_completed') === 'true';
       const frontendUserData = {
         id: normalizedUserId,
         email: userData.email,
@@ -87,11 +119,17 @@ export const AuthProvider = ({ children }) => {
         phone: userData.phone,
         cognitoUserId: userData.cognitoUserId,
         vendorId: userData.vendorId || normalizedUserId, // Add vendorId field
+        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? true,
       };
       
       setUser(frontendUserData);
-      // Update cookies with the mapped user data (7 days expiry)
-      Cookies.set('qliq-admin-user', JSON.stringify(frontendUserData), { expires: 7 });
+      setTokens({
+        accessToken: accessToken || (typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null),
+        refreshToken: typeof window !== 'undefined' ? localStorage.getItem(REFRESH_TOKEN_KEY) : null,
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(USER_KEY, JSON.stringify(frontendUserData));
+      }
       setIsLoading(false);
     } catch (error) {
       console.error('Token verification failed:', error);
@@ -112,10 +150,14 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setTokens(null);
     
-    // Clear localStorage
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('qliq-admin-user');
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
       localStorage.removeItem('qliq-admin-tokens');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('onboarding_completed');
     }
   };
 
@@ -125,6 +167,11 @@ export const AuthProvider = ({ children }) => {
       const response = await apiService.login(email, password);
       
       const { user: userData, tokens: tokenData } = response;
+      const accessToken = tokenData?.accessToken || response?.accessToken || null;
+      const refreshToken = tokenData?.refreshToken || null;
+      if (!accessToken) {
+        throw new Error('No access token returned from login');
+      }
       
       // Map backend roles to frontend roles
       let frontendRole = 'vendor'; // default
@@ -145,12 +192,18 @@ export const AuthProvider = ({ children }) => {
       };
 
       setUser(frontendUserData);
-      setTokens(tokenData);
+      setTokens({ accessToken, refreshToken: refreshToken || null });
       
       // Store in localStorage only (simple approach)
       if (typeof window !== 'undefined') {
-        localStorage.setItem('qliq-admin-user', JSON.stringify(frontendUserData));
-        localStorage.setItem('qliq-admin-tokens', JSON.stringify(tokenData));
+        localStorage.setItem(USER_KEY, JSON.stringify(frontendUserData));
+        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+        localStorage.setItem('qliq-admin-tokens', JSON.stringify({ accessToken, refreshToken: refreshToken || null }));
+        if (refreshToken) {
+          localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+        } else {
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+        }
       }
       
       return { success: true, user: frontendUserData };
@@ -174,29 +227,39 @@ export const AuthProvider = ({ children }) => {
       
       // Redirect to login page
       if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+        window.location.href = '/onboarding/login';
       }
     }
   };
 
   const refreshAccessToken = async () => {
-    if (!tokens?.refreshToken) {
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem(REFRESH_TOKEN_KEY) : null;
+    if (!refreshToken) {
       throw new Error('No refresh token available');
     }
 
-    try {
-      const response = await apiService.refreshToken(tokens.refreshToken);
-      const newTokens = response.tokens;
-      
-      setTokens(newTokens);
-      Cookies.set('qliq-admin-tokens', JSON.stringify(newTokens), { expires: 7 });
-      
-      return newTokens.accessToken;
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      clearAuthData();
-      throw error;
+    const response = await apiService.refreshToken(refreshToken);
+    const newAccessToken = response?.tokens?.accessToken;
+    if (!newAccessToken) {
+      throw new Error('No access token returned from refresh');
     }
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(ACCESS_TOKEN_KEY, newAccessToken);
+      try {
+        const legacyRaw = localStorage.getItem('qliq-admin-tokens');
+        const legacy = legacyRaw ? JSON.parse(legacyRaw) : {};
+        localStorage.setItem(
+          'qliq-admin-tokens',
+          JSON.stringify({ ...legacy, accessToken: newAccessToken })
+        );
+      } catch {
+        localStorage.setItem('qliq-admin-tokens', JSON.stringify({ accessToken: newAccessToken, refreshToken }));
+      }
+    }
+
+    setTokens((prev) => ({ ...(prev || {}), accessToken: newAccessToken, refreshToken }));
+    return newAccessToken;
   };
 
   const value = {

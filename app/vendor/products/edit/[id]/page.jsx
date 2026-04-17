@@ -15,6 +15,7 @@ export default function EditProductPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rawProduct, setRawProduct] = useState(null);
+  const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
     title: '',
     slug: '',
@@ -58,9 +59,14 @@ export default function EditProductPage() {
   const fetchProduct = async () => {
     try {
       setLoading(true);
+      console.log('Fetching product with ID:', id);
+      
       const response = await productService.getProductById(id);
-      const product = response?.data || response?.product;
-      if (!product) {
+      console.log('Product fetch response:', response);
+      
+      const product = response?.data || response?.product || response;
+      if (!product || !product._id) {
+        console.error('Product not found or invalid response:', response);
         alert('Product not found');
         router.push('/vendor/products');
         return;
@@ -93,7 +99,18 @@ export default function EditProductPage() {
         attributesJson: JSON.stringify(product.attributes || {}, null, 2),
       });
     } catch (error) {
-      alert(error?.message || 'Failed to load product');
+      console.error('Error fetching product:', error);
+      console.error('Full error details:', error.response?.data || error);
+      
+      // Provide more specific error messages
+      if (error.response?.status === 404) {
+        alert('Product not found. It may have been deleted.');
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        alert('You are not authorized to edit this product.');
+      } else {
+        alert(`Failed to load product: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+      }
+      
       router.push('/vendor/products');
     } finally {
       setLoading(false);
@@ -105,24 +122,63 @@ export default function EditProductPage() {
     setFormData((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.title.trim()) newErrors.title = 'Product title is required';
+    if (!formData.description.trim()) newErrors.description = 'Product description is required';
+    if (!formData.price || formData.price <= 0) newErrors.price = 'Valid price is required';
+    if (!formData.stock_quantity || formData.stock_quantity < 0) newErrors.stock_quantity = 'Valid stock quantity is required';
+    
+    // Validate JSON fields
+    try {
+      JSON.parse(formData.imagesJson || '[]');
+    } catch {
+      newErrors.imagesJson = 'Invalid JSON format for images';
+    }
+    
+    try {
+      JSON.parse(formData.specificationsJson || '{}');
+    } catch {
+      newErrors.specificationsJson = 'Invalid JSON format for specifications';
+    }
+    
+    try {
+      JSON.parse(formData.attributesJson || '{}');
+    } catch {
+      newErrors.attributesJson = 'Invalid JSON format for attributes';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      alert('Please fix the validation errors before submitting');
+      return;
+    }
+    
     try {
       setSaving(true);
       let images = [];
       let specifications = {};
       let attributes = {};
+      
       try {
         images = JSON.parse(formData.imagesJson || '[]');
         specifications = JSON.parse(formData.specificationsJson || '{}');
         attributes = JSON.parse(formData.attributesJson || '{}');
-      } catch {
-        alert('Please enter valid JSON for Images / Specifications / Attributes');
+      } catch (error) {
+        console.error('JSON parsing error:', error);
+        alert('Invalid JSON format. Please check your data.');
         setSaving(false);
         return;
       }
 
-      await productService.updateProduct(id, {
+      const updateData = {
         title: formData.title,
         slug: formData.slug || undefined,
         description: formData.description,
@@ -146,11 +202,29 @@ export default function EditProductPage() {
         images,
         specifications,
         attributes,
-      });
+      };
+      
+      console.log('Updating product with data:', updateData);
+      
+      const response = await productService.updateProduct(id, updateData);
+      console.log('Product update response:', response);
+      
       alert('Product updated successfully');
       router.push('/vendor/products');
     } catch (error) {
-      alert(error?.message || 'Failed to update product');
+      console.error('Edit product error:', error);
+      console.error('Full error details:', error.response?.data || error);
+      
+      // Provide more specific error messages
+      if (error.response?.status === 404) {
+        alert('Product not found. It may have been deleted.');
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        alert('You are not authorized to update this product.');
+      } else if (error.response?.status === 400) {
+        alert(`Invalid data: ${error.response?.data?.message || 'Please check your input'}`);
+      } else {
+        alert(`Failed to update product: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -191,7 +265,7 @@ export default function EditProductPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} userType="vendor" onLogout={logout} />
+      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} userType="vendor" onLogout={logout} user={user} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} userType="vendor" user={user} />
 
@@ -200,17 +274,97 @@ export default function EditProductPage() {
             <h1 className="text-2xl font-bold text-gray-900 mb-6">Edit Product</h1>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input name="title" value={formData.title} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg" placeholder="Title" />
-                <input name="slug" value={formData.slug} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" placeholder="Slug" />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    name="title" 
+                    value={formData.title} 
+                    onChange={handleChange} 
+                    required 
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.title ? 'border-red-500' : 'border-gray-300'
+                    }`} 
+                    placeholder="Product title" 
+                  />
+                  {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Slug</label>
+                  <input name="slug" value={formData.slug} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="product-slug" />
+                </div>
               </div>
-              <textarea name="description" value={formData.description} onChange={handleChange} rows={4} required className="w-full px-3 py-2 border rounded-lg" placeholder="Description" />
-              <textarea name="short_description" value={formData.short_description} onChange={handleChange} rows={2} className="w-full px-3 py-2 border rounded-lg" placeholder="Short Description" />
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                <textarea 
+                  name="description" 
+                  value={formData.description} 
+                  onChange={handleChange} 
+                  rows={4} 
+                  required 
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.description ? 'border-red-500' : 'border-gray-300'
+                  }`} 
+                  placeholder="Product description" 
+                />
+                {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Short Description</label>
+                <textarea name="short_description" value={formData.short_description} onChange={handleChange} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Brief product description" />
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <input name="price" type="number" min="0" value={formData.price} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg" placeholder="Price" />
-                <input name="discount_price" type="number" min="0" value={formData.discount_price} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" placeholder="Discount Price" />
-                <input name="cost_price" type="number" min="0" value={formData.cost_price} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" placeholder="Cost Price" />
-                <input name="stock_quantity" type="number" min="0" value={formData.stock_quantity} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg" placeholder="Stock" />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    name="price" 
+                    type="number" 
+                    min="0" 
+                    step="0.01"
+                    value={formData.price} 
+                    onChange={handleChange} 
+                    required 
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.price ? 'border-red-500' : 'border-gray-300'
+                    }`} 
+                    placeholder="0.00" 
+                  />
+                  {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Discount Price</label>
+                  <input name="discount_price" type="number" min="0" step="0.01" value={formData.discount_price} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
+                  <input name="cost_price" type="number" min="0" step="0.01" value={formData.cost_price} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Stock Quantity <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    name="stock_quantity" 
+                    type="number" 
+                    min="0" 
+                    value={formData.stock_quantity} 
+                    onChange={handleChange} 
+                    required 
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.stock_quantity ? 'border-red-500' : 'border-gray-300'
+                    }`} 
+                    placeholder="0" 
+                  />
+                  {errors.stock_quantity && <p className="text-red-500 text-sm mt-1">{errors.stock_quantity}</p>}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -250,9 +404,50 @@ export default function EditProductPage() {
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_digital" checked={formData.is_digital} onChange={handleChange} /> Digital</label>
               </div>
 
-              <textarea name="imagesJson" value={formData.imagesJson} onChange={handleChange} rows={5} className="w-full px-3 py-2 border rounded-lg font-mono text-xs" placeholder="Images JSON" />
-              <textarea name="specificationsJson" value={formData.specificationsJson} onChange={handleChange} rows={6} className="w-full px-3 py-2 border rounded-lg font-mono text-xs" placeholder="Specifications JSON" />
-              <textarea name="attributesJson" value={formData.attributesJson} onChange={handleChange} rows={6} className="w-full px-3 py-2 border rounded-lg font-mono text-xs" placeholder="Attributes JSON" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Images (JSON)</label>
+                <textarea 
+                  name="imagesJson" 
+                  value={formData.imagesJson} 
+                  onChange={handleChange} 
+                  rows={5} 
+                  className={`w-full px-3 py-2 border rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.imagesJson ? 'border-red-500' : 'border-gray-300'
+                  }`} 
+                  placeholder='[{"url": "https://...", "is_primary": true, "alt_text": "..."}]' 
+                />
+                {errors.imagesJson && <p className="text-red-500 text-sm mt-1">{errors.imagesJson}</p>}
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Specifications (JSON)</label>
+                <textarea 
+                  name="specificationsJson" 
+                  value={formData.specificationsJson} 
+                  onChange={handleChange} 
+                  rows={6} 
+                  className={`w-full px-3 py-2 border rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.specificationsJson ? 'border-red-500' : 'border-gray-300'
+                  }`} 
+                  placeholder='{"color": "red", "size": "large"}' 
+                />
+                {errors.specificationsJson && <p className="text-red-500 text-sm mt-1">{errors.specificationsJson}</p>}
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Attributes (JSON)</label>
+                <textarea 
+                  name="attributesJson" 
+                  value={formData.attributesJson} 
+                  onChange={handleChange} 
+                  rows={6} 
+                  className={`w-full px-3 py-2 border rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.attributesJson ? 'border-red-500' : 'border-gray-300'
+                  }`} 
+                  placeholder='{"weight": "1kg", "material": "cotton"}' 
+                />
+                {errors.attributesJson && <p className="text-red-500 text-sm mt-1">{errors.attributesJson}</p>}
+              </div>
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => router.push('/vendor/products')} className="px-4 py-2 border rounded-lg">Cancel</button>

@@ -43,7 +43,7 @@ import {
   Building
 } from 'lucide-react';
 
-const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout }) => {
+const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) => {
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState({});
 
@@ -114,9 +114,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout }) => {
       }
       if (pathname.includes('/vendor/store')) {
         sectionsToExpand.store = true;
-      }
-      if (pathname.includes('/vendor/reports')) {
-        sectionsToExpand.reports = true;
       }
       if (pathname.includes('/vendor/creators-payment')) {
         sectionsToExpand.creatorsPayment = true;
@@ -342,7 +339,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout }) => {
       label: 'Financial',
       children: [
         { label: 'Earnings Overview', href: '/vendor/financial/earnings' },
-        { label: 'Transactions', href: '/vendor/financial/transactions' },
         { label: 'Payouts', href: '/vendor/financial/payouts' },
         { label: 'Commission Details', href: '/vendor/financial/commission' },
       ]
@@ -389,16 +385,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout }) => {
       href: '/vendor/reviews' 
     },
     { 
-      id: 'reports',
-      icon: FileText, 
-      label: 'Reports',
-      children: [
-        { label: 'Sales Reports', href: '/vendor/reports/sales' },
-        { label: 'Inventory Reports', href: '/vendor/reports/inventory' },
-        { label: 'Export Data', href: '/vendor/reports/export' },
-      ]
-    },
-    { 
       icon: LifeBuoy, 
       label: 'Support', 
       href: '/vendor/support' 
@@ -435,7 +421,7 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout }) => {
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-lg">Q</span>
               </div>
-              <span className="text-xl font-bold text-gray-900">QLIQ</span>
+              <span className="text-xl font-bold text-gray-900">IQLIQ</span>
             </div>
             <button
               onClick={onToggle}
@@ -526,14 +512,18 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout }) => {
           {/* User info and logout */}
           <div className="p-4 border-t border-gray-200">
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-gray-600">A</span>
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                <span className="text-sm font-medium text-white">
+                  {user?.email ? user.email.charAt(0).toUpperCase() : 'A'}
+                </span>
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900">
                   {userType === 'superadmin' ? 'Super Admin' : 'Vendor'}
                 </p>
-                <p className="text-xs text-gray-500">admin@qliq.com</p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user?.email || 'admin@iqliq.com'}
+                </p>
               </div>
             </div>
             <button 
