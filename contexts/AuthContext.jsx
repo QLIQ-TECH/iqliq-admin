@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../lib/api-debug';
+import { authApi, REFRESH_TOKEN_KEY } from '../lib/apiClient';
 
 const AuthContext = createContext();
 
@@ -43,7 +44,7 @@ export const AuthProvider = ({ children }) => {
             
             // Optionally verify token in background (don't wait for it)
             // Only clear session if explicitly unauthorized
-            verifyToken(savedToken).catch(err => {
+            verifyToken().catch((err) => {
               console.log('Background token verification failed:', err);
             });
           } catch (error) {
@@ -63,10 +64,10 @@ export const AuthProvider = ({ children }) => {
     initAuth();
   }, []);
 
-  const verifyToken = async (accessToken) => {
+  const verifyToken = async () => {
     try {
-      const response = await apiService.getProfile(accessToken);
-      // Token is valid, user data is up to date
+      // Uses Bearer from localStorage; apiClient retries once on 401 after refresh
+      const response = await authApi.get('/profile');
       const userData = response.user;
       
       // Map backend roles to frontend roles
@@ -108,10 +109,10 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setTokens(null);
     
-    // Clear localStorage
     if (typeof window !== 'undefined') {
       localStorage.removeItem('qliq-admin-user');
       localStorage.removeItem('qliq-admin-access-token');
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
     }
   };
 
@@ -122,6 +123,7 @@ export const AuthProvider = ({ children }) => {
       
       const { user: userData, tokens: tokenData } = response;
       const accessToken = tokenData?.accessToken || response?.accessToken || null;
+      const refreshToken = tokenData?.refreshToken || null;
       if (!accessToken) {
         throw new Error('No access token returned from login');
       }
@@ -151,6 +153,11 @@ export const AuthProvider = ({ children }) => {
       if (typeof window !== 'undefined') {
         localStorage.setItem('qliq-admin-user', JSON.stringify(frontendUserData));
         localStorage.setItem('qliq-admin-access-token', accessToken);
+        if (refreshToken) {
+          localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+        } else {
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+        }
       }
       
       return { success: true, user: frontendUserData };

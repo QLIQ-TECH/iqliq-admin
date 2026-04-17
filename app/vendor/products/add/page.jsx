@@ -573,47 +573,39 @@ export default function AddProductPage() {
     }
     
     setIsUploading(true);
-    const uploadPromises = [];
-    
-    for (let i = 0; i < Math.min(files.length, availableSlots); i++) {
-      const file = files[i];
-      
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert(`File ${file.name} is not an image. Please select only image files.`);
-        continue;
-      }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert(`File ${file.name} is too large. Please select files smaller than 5MB.`);
-        continue;
-      }
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folder', 'products');
-      formData.append('optimize', 'true');
-      formData.append('maxWidth', '1200');
-      formData.append('maxHeight', '1200');
-      formData.append('quality', '85');
-      
-      uploadPromises.push(
-        fetch(`${process.env.NEXT_PUBLIC_MEDIA_API_URL || 'http://localhost:5005/api'}/upload/image`, {
-          method: 'POST',
-          headers: tokens ? { 'Authorization': `Bearer ${tokens}` } : {},
-          body: formData
-        }).then(response => response.json())
-      );
-    }
     
     try {
-      const results = await Promise.all(uploadPromises);
-      const successfulUploads = results.filter(result => result.success);
+      // Validate files before upload
+      const validFiles = [];
+      for (let i = 0; i < Math.min(files.length, availableSlots); i++) {
+        const file = files[i];
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          alert(`File ${file.name} is not an image. Please select only image files.`);
+          continue;
+        }
+        
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          alert(`File ${file.name} is too large. Please select files smaller than 5MB.`);
+          continue;
+        }
+        
+        validFiles.push(file);
+      }
       
-      if (successfulUploads.length > 0) {
-        const newImages = successfulUploads.map((result, index) => ({
-          url: result.data.url,
+      if (validFiles.length === 0) {
+        setIsUploading(false);
+        return;
+      }
+      
+      // Use the product service to upload images
+      const uploadResult = await productService.uploadProductImages(validFiles);
+      
+      if (uploadResult.success) {
+        const newImages = uploadResult.data.map((result, index) => ({
+          url: result.url,
           is_primary: uploadedImages.length === 0 && index === 0,
           alt_text: formData.title || 'Product image',
           uploaded: true
@@ -634,10 +626,12 @@ export default function AddProductPage() {
         ];
         
         setFormData(prev => ({ ...prev, images: allImages }));
+      } else {
+        throw new Error(uploadResult.message || 'Upload failed');
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload images. Please try again.');
+      alert(`Failed to upload images: ${error.message}`);
     } finally {
       setIsUploading(false);
     }
@@ -1135,6 +1129,7 @@ export default function AddProductPage() {
         onToggle={() => setSidebarOpen(!sidebarOpen)} 
         userType="vendor"
         onLogout={logout}
+        user={user}
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">
