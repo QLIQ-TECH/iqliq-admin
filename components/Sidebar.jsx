@@ -115,9 +115,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) 
       if (pathname.includes('/vendor/store')) {
         sectionsToExpand.store = true;
       }
-      if (pathname.includes('/vendor/reports')) {
-        sectionsToExpand.reports = true;
-      }
       if (pathname.includes('/vendor/creators-payment')) {
         sectionsToExpand.creatorsPayment = true;
       }
@@ -342,7 +339,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) 
       label: 'Financial',
       children: [
         { label: 'Earnings Overview', href: '/vendor/financial/earnings' },
-        { label: 'Transactions', href: '/vendor/financial/transactions' },
         { label: 'Payouts', href: '/vendor/financial/payouts' },
         { label: 'Commission Details', href: '/vendor/financial/commission' },
       ]
@@ -387,16 +383,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) 
       icon: Star, 
       label: 'Reviews & Ratings', 
       href: '/vendor/reviews' 
-    },
-    { 
-      id: 'reports',
-      icon: FileText, 
-      label: 'Reports',
-      children: [
-        { label: 'Sales Reports', href: '/vendor/reports/sales' },
-        { label: 'Inventory Reports', href: '/vendor/reports/inventory' },
-        { label: 'Export Data', href: '/vendor/reports/export' },
-      ]
     },
     { 
       icon: LifeBuoy, 
