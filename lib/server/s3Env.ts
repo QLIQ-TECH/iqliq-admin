@@ -8,6 +8,8 @@ export function getS3BucketName(): string {
   return (process.env.AWS_S3_BUCKET || '').trim()
 }
 
+
+
 export function getS3BucketEnvLabel(): string {
   return 'AWS_BUCKET or AWS_S3_BUCKET'
 }
