@@ -35,7 +35,12 @@ const nextConfig = {
       'placehold.co',
       'dummyimage.com',
       'logo.clearbit.com',
-      'upload.wikimedia.org'
+      'upload.wikimedia.org',
+      // AWS S3 domains
+      'devqliqecommerce.s3.ap-south-1.amazonaws.com',
+      'iqliq-mumbai.s3.ap-south-1.amazonaws.com',
+      's3.ap-south-1.amazonaws.com',
+      's3.amazonaws.com'
     ],
     remotePatterns: [
       {
