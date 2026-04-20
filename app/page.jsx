@@ -12,7 +12,7 @@ export default function Home() {
     if (isLoading) return;
 
     if (!user) {
-      window.location.assign('/onboarding/login');
+      window.location.assign('/login');
       return;
     }
 
