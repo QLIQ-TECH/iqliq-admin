@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { getS3BucketName, getS3BucketEnvLabel } from '../../../../lib/server/s3Env'
 
 const getS3PublicUrl = (bucket: string, region: string, key: string) => {
   const cdnUrl = process.env.CDN_URL
@@ -42,13 +43,13 @@ export async function POST(req: Request) {
 
   // Use the AWS credentials from this admin-ecom process .env (gig image uploads only).
   const region = process.env.AWS_REGION
-  const bucket = process.env.AWS_BUCKET
+  const bucket = getS3BucketName()
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID
   const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
 
   const missing: string[] = []
   if (!region) missing.push('AWS_REGION')
-  if (!bucket) missing.push('AWS_BUCKET')
+  if (!bucket) missing.push(getS3BucketEnvLabel())
   if (!accessKeyId) missing.push('AWS_ACCESS_KEY_ID')
   if (!secretAccessKey) missing.push('AWS_SECRET_ACCESS_KEY')
 

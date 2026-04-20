@@ -6,14 +6,39 @@ import { useAuth } from '../../../../../contexts/AuthContext';
 import Sidebar from '../../../../../components/Sidebar';
 import Header from '../../../../../components/Header';
 import productService from '../../../../../lib/services/productService';
+import ImageUpload from '../../../../../components/ImageUpload';
+
+function normalizeProductImagesJson(images) {
+  if (!Array.isArray(images)) return '[]';
+  const out = [];
+  for (let i = 0; i < images.length; i += 1) {
+    const img = images[i];
+    if (typeof img === 'string' && img.trim()) {
+      out.push({ url: img.trim(), is_primary: out.length === 0, alt_text: 'Product image' });
+    } else if (img && typeof img === 'object' && img.url) {
+      out.push({
+        url: img.url,
+        is_primary: Boolean(img.is_primary),
+        alt_text: img.alt_text || 'Product image',
+      });
+    }
+  }
+  if (out.length && !out.some((x) => x.is_primary)) {
+    out[0].is_primary = true;
+  }
+  return JSON.stringify(out, null, 2);
+}
 
 export default function EditProductPage() {
-  const { id } = useParams();
+  const params = useParams();
+  const rawId = params?.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [rawProduct, setRawProduct] = useState(null);
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
@@ -94,23 +119,21 @@ export default function EditProductPage() {
         meta_title: product.meta_title || '',
         meta_description: product.meta_description || '',
         tagsText: Array.isArray(product.tags) ? product.tags.join(', ') : '',
-        imagesJson: JSON.stringify(product.images || [], null, 2),
+        imagesJson: normalizeProductImagesJson(product.images || []),
         specificationsJson: JSON.stringify(product.specifications || {}, null, 2),
         attributesJson: JSON.stringify(product.attributes || {}, null, 2),
       });
     } catch (error) {
       console.error('Error fetching product:', error);
-      console.error('Full error details:', error.response?.data || error);
-      
-      // Provide more specific error messages
-      if (error.response?.status === 404) {
+      const msg = error?.message || String(error);
+      if (msg.includes('404') || msg.toLowerCase().includes('not found')) {
         alert('Product not found. It may have been deleted.');
-      } else if (error.response?.status === 401 || error.response?.status === 403) {
+      } else if (msg.includes('401') || msg.includes('403') || msg.toLowerCase().includes('unauthorized')) {
         alert('You are not authorized to edit this product.');
       } else {
-        alert(`Failed to load product: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+        alert(`Failed to load product: ${msg}`);
       }
-      
+
       router.push('/vendor/products');
     } finally {
       setLoading(false);
@@ -120,6 +143,85 @@ export default function EditProductPage() {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const parseImagesJson = () => {
+    try {
+      const parsed = JSON.parse(formData.imagesJson || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const updateImagesJson = (images) => {
+    setFormData((prev) => ({
+      ...prev,
+      imagesJson: JSON.stringify(images, null, 2),
+    }));
+  };
+
+  const handleEditImageUpload = async (fileList) => {
+    if (!fileList?.length) return;
+
+    const existingImages = parseImagesJson();
+    const availableSlots = Math.max(0, 5 - existingImages.length);
+    if (availableSlots === 0) {
+      alert('Maximum 5 images allowed.');
+      return;
+    }
+
+    const candidateFiles = Array.from(fileList).slice(0, availableSlots);
+    const validFiles = candidateFiles.filter((file) => {
+      if (!file.type.startsWith('image/')) {
+        alert(`File ${file.name} is not an image.`);
+        return false;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`File ${file.name} exceeds 5MB.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (!validFiles.length) return;
+
+    try {
+      setIsUploadingImages(true);
+      const uploadResult = await productService.uploadProductImages(validFiles);
+      if (!uploadResult?.success || !uploadResult?.data?.length) {
+        throw new Error(uploadResult?.message || 'Image upload failed');
+      }
+
+      const hasPrimary = existingImages.some((img) => img?.is_primary);
+      const appended = uploadResult.data.map((item, index) => ({
+        url: item.url,
+        is_primary: !hasPrimary && index === 0,
+        alt_text: formData.title || 'Product image',
+      }));
+
+      updateImagesJson([...existingImages, ...appended]);
+    } catch (error) {
+      alert(error?.message || 'Failed to upload images');
+    } finally {
+      setIsUploadingImages(false);
+    }
+  };
+
+  const removeImageAt = (index) => {
+    const current = parseImagesJson();
+    const next = current.filter((_, i) => i !== index);
+    const hadPrimary = current[index]?.is_primary;
+    if (hadPrimary && next.length > 0 && !next.some((img) => img?.is_primary)) {
+      next[0] = { ...next[0], is_primary: true };
+    }
+    updateImagesJson(next);
+  };
+
+  const setPrimaryImageAt = (index) => {
+    const current = parseImagesJson();
+    const next = current.map((img, i) => ({ ...img, is_primary: i === index }));
+    updateImagesJson(next);
   };
 
   const validateForm = () => {
@@ -168,7 +270,8 @@ export default function EditProductPage() {
       let attributes = {};
       
       try {
-        images = JSON.parse(formData.imagesJson || '[]');
+        const rawImages = JSON.parse(formData.imagesJson || '[]');
+        images = JSON.parse(normalizeProductImagesJson(rawImages));
         specifications = JSON.parse(formData.specificationsJson || '{}');
         attributes = JSON.parse(formData.attributesJson || '{}');
       } catch (error) {
@@ -213,17 +316,15 @@ export default function EditProductPage() {
       router.push('/vendor/products');
     } catch (error) {
       console.error('Edit product error:', error);
-      console.error('Full error details:', error.response?.data || error);
-      
-      // Provide more specific error messages
-      if (error.response?.status === 404) {
+      const msg = error?.message || String(error);
+      if (msg.includes('404') || msg.toLowerCase().includes('not found')) {
         alert('Product not found. It may have been deleted.');
-      } else if (error.response?.status === 401 || error.response?.status === 403) {
-        alert('You are not authorized to update this product.');
-      } else if (error.response?.status === 400) {
-        alert(`Invalid data: ${error.response?.data?.message || 'Please check your input'}`);
+      } else if (msg.includes('403') || msg.toLowerCase().includes('permission')) {
+        alert('You are not allowed to update this product.');
+      } else if (msg.includes('400') || msg.toLowerCase().includes('invalid')) {
+        alert(`Invalid data: ${msg}`);
       } else {
-        alert(`Failed to update product: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+        alert(`Failed to update product: ${msg}`);
       }
     } finally {
       setSaving(false);
@@ -340,8 +441,20 @@ export default function EditProductPage() {
                   {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Discount Price</label>
-                  <input name="discount_price" type="number" min="0" step="0.01" value={formData.discount_price} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.00" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Discount Price <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    name="discount_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.discount_price}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Leave empty if none"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Sale pricing can also be managed via Sales Gigs / Ecom promos.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
@@ -402,6 +515,43 @@ export default function EditProductPage() {
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_featured" checked={formData.is_featured} onChange={handleChange} /> Featured</label>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_digital" checked={formData.is_digital} onChange={handleChange} /> Digital</label>
+              </div>
+
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Upload Product Images</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => handleEditImageUpload(e.target.files)}
+                  disabled={isUploadingImages}
+                  className="block w-full text-sm text-gray-700"
+                />
+                <p className="text-xs text-gray-500 mt-1">Direct frontend upload. URLs are saved in product `images` in DB.</p>
+                {isUploadingImages && <p className="text-sm text-blue-600 mt-2">Uploading...</p>}
+
+                {parseImagesJson().length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {parseImagesJson().map((image, index) => (
+                      <div key={`${image?.url}-${index}`} className="border rounded p-2 bg-white">
+                        <div className="aspect-square overflow-hidden rounded bg-gray-100">
+                          <img src={image?.url} alt={image?.alt_text || 'Product image'} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          {!image?.is_primary && (
+                            <button type="button" onClick={() => setPrimaryImageAt(index)} className="text-xs px-2 py-1 border rounded">
+                              Set Primary
+                            </button>
+                          )}
+                          <button type="button" onClick={() => removeImageAt(index)} className="text-xs px-2 py-1 border rounded text-red-600">
+                            Remove
+                          </button>
+                        </div>
+                        {image?.is_primary && <p className="text-xs text-blue-600 mt-1">Primary</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>

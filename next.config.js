@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const vendorOnboardingUrl = process.env.NEXT_PUBLIC_VENDOR_ONBOARDING_URL || 'https://vendor.iqliq.ae';
 const rawVendorOnboardingUrl =
   process.env.NEXT_PUBLIC_VENDOR_ONBOARDING_URL || 'https://vendor.iqliq.ae/onboarding';
 const normalizedVendorOnboardingUrl = rawVendorOnboardingUrl.replace(/\/$/, '');
@@ -13,6 +14,12 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/onboarding',
+        destination: vendorOnboardingUrl,
+      },
+      {
+        source: '/onboarding/:path*',
+        destination: `${vendorOnboardingUrl}/:path*`,
         source: '/onboarding/assets/:path*',
         destination: `${vendorOnboardingOriginUrl}/assets/:path*`,
       },
@@ -47,7 +54,12 @@ const nextConfig = {
       'placehold.co',
       'dummyimage.com',
       'logo.clearbit.com',
-      'upload.wikimedia.org'
+      'upload.wikimedia.org',
+      // AWS S3 domains
+      'devqliqecommerce.s3.ap-south-1.amazonaws.com',
+      'iqliq-mumbai.s3.ap-south-1.amazonaws.com',
+      's3.ap-south-1.amazonaws.com',
+      's3.amazonaws.com'
     ],
     remotePatterns: [
       {
