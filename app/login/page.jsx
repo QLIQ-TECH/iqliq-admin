@@ -15,7 +15,7 @@ export default function Login() {
     // Redirect to appropriate dashboard if already logged in
     if (user) {
       if (user.role === 'vendor' && user.onboardingCompleted === false) {
-        window.location.assign('/onboarding');
+        window.location.assign('/onboarding/virtual-assitance');
         return;
       }
       if (user.role === 'superadmin') {

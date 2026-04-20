@@ -17,7 +17,7 @@ export default function Home() {
     }
 
     if (user.role === 'vendor' && user.onboardingCompleted === false) {
-      window.location.assign('/onboarding');
+      window.location.assign('/onboarding/virtual-assitance');
       return;
     }
     if (user.role === 'superadmin') {
