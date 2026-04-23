@@ -18,14 +18,20 @@ const Step4FillDetails = ({
   setStep4ImageFile,
   closeCreateGigDrawer,
   setCurrentStep,
+  backStep = 3,
+  nextStep = 5,
+  stepNumber = 4,
+  progressBarClass = 'w-[72%]',
 }) => {
   return (
     <div className="w-full max-w-3xl mx-auto pt-4 h-full flex flex-col">
       <div className="h-2 rounded-full bg-gray-200 overflow-hidden mb-8">
-        <div className="h-full w-[72%] bg-blue-500 rounded-full" />
+        <div className={`h-full ${progressBarClass} bg-blue-500 rounded-full`} />
       </div>
 
-      <h2 className="text-4xl font-semibold text-black mb-8">Step 4 : Fill the Details</h2>
+      <h2 className="text-4xl font-semibold text-black mb-8">
+        Step {stepNumber} : Fill the Details
+      </h2>
 
       <div className="flex-1 overflow-y-auto pr-2">
         <div className="grid grid-cols-2 gap-5">
@@ -263,7 +269,7 @@ const Step4FillDetails = ({
           <button
             type="button"
             className="px-8 h-[40px] rounded-full border border-[#0082FF] text-xl text-black bg-white"
-            onClick={() => setCurrentStep(3)}
+            onClick={() => setCurrentStep(backStep)}
           >
             Back
           </button>
@@ -275,7 +281,7 @@ const Step4FillDetails = ({
                 ? 'bg-[#0082FF]/30 text-[#0082FF]'
                 : 'bg-[#0082FF]/30 text-[#0082FF] cursor-not-allowed'
             }`}
-            onClick={() => setCurrentStep(5)}
+            onClick={() => setCurrentStep(nextStep)}
           >
             Next
           </button>
