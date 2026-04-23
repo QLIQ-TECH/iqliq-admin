@@ -16,6 +16,7 @@ const Step5ConfirmAgreement = ({
   handleConfirmCreateGig,
   closeCreateGigDrawer,
   setCurrentStep,
+  backStep = 4,
 }) => {
   return (
     <div className="w-full max-w-3xl mx-auto pt-4 h-full flex flex-col">
@@ -141,7 +142,7 @@ const Step5ConfirmAgreement = ({
           <button
             type="button"
             className="px-8 h-[40px] rounded-full border border-[#0082FF] text-xl text-black bg-white"
-            onClick={() => setCurrentStep(4)}
+            onClick={() => setCurrentStep(backStep)}
           >
             Back
           </button>

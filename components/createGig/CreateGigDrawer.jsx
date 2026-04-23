@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { gigsApi, usersApi } from '../../lib/apiClient';
 import {
   Facebook,
@@ -11,14 +11,27 @@ import {
   X,
   Heart,
   Eye,
-  MessageCircle
+  MessageCircle,
+  DollarSign
 } from 'lucide-react';
 import Step1Platform from './steps/Step1Platform';
 import Step2Influencers from './steps/Step2Influencers';
 import Step3GigType from './steps/Step3GigType';
 import Step4FillDetails from './steps/Step4FillDetails';
 import Step5ConfirmAgreement from './steps/Step5ConfirmAgreement';
+import Step5IqliqSalesSelectProduct from './steps/Step5IqliqSalesSelectProduct';
 import Step6Success from './steps/Step6Success';
+
+const EMPTY_STEP4_FORM = {
+  title: '',
+  amount: '',
+  successAmount: '',
+  kpi: '',
+  url: '',
+  startDate: '',
+  endDate: '',
+  description: ''
+};
 
 /**
  * Same slide-in create-gig flow as the vendor dashboard (+ Create Gigs).
@@ -37,23 +50,17 @@ export default function CreateGigDrawer({
 }) {
   const [selectedPlatform, setSelectedPlatform] = useState('');
   const [currentStep, setCurrentStep] = useState(1);
+  const currentStepRef = useRef(1);
   const [isLoadingInfluencers, setIsLoadingInfluencers] = useState(false);
   const [influencers, setInfluencers] = useState([]);
+  const [allInfluencers, setAllInfluencers] = useState([]);
   const [selectedInfluencerIds, setSelectedInfluencerIds] = useState([]);
   const [influencerSearch, setInfluencerSearch] = useState('');
   const [selectedListFilter, setSelectedListFilter] = useState('');
-  const [selectedGigType, setSelectedGigType] = useState('like_watch_comment_repost');
-  const [step4Form, setStep4Form] = useState({
-    title: '',
-    amount: '',
-    successAmount: '',
-    kpi: '',
-    url: '',
-    startDate: '',
-    endDate: '',
-    description: ''
-  });
+  const [selectedGigType, setSelectedGigType] = useState('');
+  const [step4Form, setStep4Form] = useState(() => ({ ...EMPTY_STEP4_FORM }));
   const [brandAgreementAccepted, setBrandAgreementAccepted] = useState(false);
+  const [selectedSalesProductIds, setSelectedSalesProductIds] = useState([]);
 
   const step4UploadInputRef = useRef(null);
   const [step4ImageFile, setStep4ImageFile] = useState(null);
@@ -69,7 +76,7 @@ export default function CreateGigDrawer({
     { id: 'iqliq', label: 'IQliq', icon: Users, iconClass: 'text-sky-600' }
   ];
 
-  const gigTypeOptions = [
+  const baseGigTypeOptions = [
     {
       id: 'like_watch_comment_repost',
       title: 'Like & Watch & Comment & Repost',
@@ -114,6 +121,15 @@ export default function CreateGigDrawer({
     }
   ];
 
+  const salesGigTypeOption = {
+    id: 'sales',
+    title: 'Sales',
+    subtitle: 'Sales gig',
+    icon: DollarSign
+  };
+
+  const gigTypeOptions = selectedPlatform === 'iqliq' ? [...baseGigTypeOptions, salesGigTypeOption] : baseGigTypeOptions;
+
   const platformLabelMap = {
     facebook: 'Facebook',
     instagram: 'Instagram',
@@ -127,28 +143,29 @@ export default function CreateGigDrawer({
   const selectedGigCategory = selectedGigTypeOption?.title || '';
   const selectedAmount = step4Form.amount || '';
   const selectedSuccessAmount = step4Form.successAmount || '';
-  const allAgreed = selectedInfluencerIds.length > 0 && brandAgreementAccepted;
+  const isIqliqSalesFlow = selectedPlatform === 'iqliq' && selectedGigType === 'sales';
+  const iqliqSalesOfficialBrandId =
+    process.env.NEXT_PUBLIC_IQLIQ_SALES_OFFICIAL_BRAND_ID || '69cf9bd0fb912b2c21f90676';
+  const allAgreed =
+    selectedInfluencerIds.length > 0 &&
+    brandAgreementAccepted &&
+    Boolean(selectedGigType) &&
+    (!isIqliqSalesFlow || selectedSalesProductIds.length > 0);
 
   const resetForm = () => {
+    currentStepRef.current = 1;
     setCurrentStep(1);
     setSelectedPlatform('');
     setInfluencers([]);
+    setAllInfluencers([]);
     setSelectedInfluencerIds([]);
     setInfluencerSearch('');
     setSelectedListFilter('');
-    setStep4Form({
-      title: '',
-      amount: '',
-      successAmount: '',
-      kpi: '',
-      url: '',
-      startDate: '',
-      endDate: '',
-      description: ''
-    });
+    setStep4Form({ ...EMPTY_STEP4_FORM });
     setStep4ImageFile(null);
-    setSelectedGigType('like_watch_comment_repost');
+    setSelectedGigType('');
     setBrandAgreementAccepted(false);
+    setSelectedSalesProductIds([]);
     setCreatedGigId(null);
     setCreateGigError('');
     setIsCreatingGig(false);
@@ -160,6 +177,50 @@ export default function CreateGigDrawer({
       resetForm();
     }
   }, [open]);
+
+  useEffect(() => {
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
+
+  /** Clears selections for steps after the target when the user goes Back. */
+  const navigateToStep = useCallback(
+    (targetStep) => {
+      const from = currentStepRef.current;
+      if (targetStep < from) {
+        const iqliqSales = selectedPlatform === 'iqliq' && selectedGigType === 'sales';
+
+        if (targetStep <= 1) {
+          setSelectedPlatform('');
+          setSelectedInfluencerIds([]);
+          setInfluencerSearch('');
+          setSelectedListFilter('');
+        }
+        if (targetStep <= 2) {
+          setSelectedGigType('');
+        }
+        if (targetStep <= 3) {
+          setSelectedSalesProductIds([]);
+          setStep4Form({ ...EMPTY_STEP4_FORM });
+          setStep4ImageFile(null);
+          setBrandAgreementAccepted(false);
+        } else if (targetStep === 4 && from === 5) {
+          if (iqliqSales) {
+            setStep4Form({ ...EMPTY_STEP4_FORM });
+            setStep4ImageFile(null);
+          }
+          setBrandAgreementAccepted(false);
+        } else if (targetStep === 5 && from === 6 && iqliqSales) {
+          setBrandAgreementAccepted(false);
+        }
+
+        setCreateGigError('');
+      }
+
+      currentStepRef.current = targetStep;
+      setCurrentStep(targetStep);
+    },
+    [selectedPlatform, selectedGigType]
+  );
 
   const closeDrawer = () => {
     resetForm();
@@ -177,21 +238,76 @@ export default function CreateGigDrawer({
     activeSocialMedia: Array.isArray(item?.activeSocialMedia) ? item.activeSocialMedia : []
   });
 
-  const fetchInfluencers = async () => {
-    const platform = platformLabelMap[selectedPlatform] || '';
-    if (!platform) return;
-
+  const fetchAllInfluencers = async () => {
     setIsLoadingInfluencers(true);
     try {
+      // Fetch all influencers using the filter endpoint (token provided by ApiClient).
+      // Requirement: do NOT pass `platform` so it returns all influencers.
+      const limit = 10;
+      let page = 1;
+      let aggregated = [];
+
+      // Page through until backend returns fewer than `limit`.
+      // This keeps Step 2 "Select Influencers" fully populated.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const json = await usersApi.get('/influencers/filter', {
+          search: '',
+          // platform intentionally omitted to avoid platform-based division
+          page,
+          limit,
+          myList: ''
+        });
+
+        const rows = json?.data?.data || [];
+        aggregated = aggregated.concat(rows.map(mapInfluencer));
+
+        if (!Array.isArray(rows) || rows.length < limit) break;
+        page += 1;
+      }
+
+      setAllInfluencers(aggregated);
+      setInfluencers(aggregated);
+    } catch (error) {
+      console.error('Error fetching all influencers:', error);
+      setAllInfluencers([]);
+      setInfluencers([]);
+    } finally {
+      setIsLoadingInfluencers(false);
+    }
+  };
+
+  const fetchInfluencers = async () => {
+    try {
+      // If there's no search/list filter, just show the full list.
+      if (!influencerSearch?.trim() && !selectedListFilter) {
+        if (allInfluencers.length > 0) {
+          setInfluencers(allInfluencers);
+        } else {
+          await fetchAllInfluencers();
+        }
+        return;
+      }
+
+      // Keep full list cached for referralCode/name lookup.
+      if (allInfluencers.length === 0) {
+        await fetchAllInfluencers();
+      }
+
+      setIsLoadingInfluencers(true);
+
+      // Search across ALL platforms (no platform division).
+      // Token is automatically sent by usersApi (ApiClient).
       const json = await usersApi.get('/influencers/filter', {
         search: influencerSearch || '',
-        platform,
+        // platform intentionally omitted so search results are not divided by platform
         page: 1,
         limit: 10,
         myList: selectedListFilter || ''
       });
-      const rows = json?.data?.data || [];
-      setInfluencers(rows.map(mapInfluencer));
+
+      const rows = json?.data?.data || json?.data || json?.data?.rows || [];
+      setInfluencers(Array.isArray(rows) ? rows.map(mapInfluencer) : []);
     } catch (error) {
       console.error('Error fetching influencers:', error);
       setInfluencers([]);
@@ -202,8 +318,8 @@ export default function CreateGigDrawer({
 
   const handleContinueFromStep1 = async () => {
     if (!selectedPlatform) return;
-    setCurrentStep(2);
-    await fetchInfluencers();
+    navigateToStep(2);
+    await fetchAllInfluencers();
   };
 
   const toggleInfluencerSelection = (influencerId) => {
@@ -332,9 +448,9 @@ export default function CreateGigDrawer({
           .filter(Boolean)
           .map((id) => ({
             id,
-            referralCode: influencers.find((x) => x.id === id)?.referralCode || ''
+            referralCode: allInfluencers.find((x) => x.id === id)?.referralCode || ''
           })),
-        purchaseProductId: [],
+        purchaseProductId: isIqliqSalesFlow ? selectedSalesProductIds : [],
         productUrl: step4Form.url.trim()
       };
 
@@ -352,7 +468,7 @@ export default function CreateGigDrawer({
         null;
 
       setCreatedGigId(gigId);
-      setCurrentStep(6);
+      navigateToStep(isIqliqSalesFlow ? 7 : 6);
       onGigCreated?.();
     } catch (e) {
       console.error('Create gig failed:', e);
@@ -449,7 +565,7 @@ export default function CreateGigDrawer({
             getInitial={getInitial}
             socialIconFor={socialIconFor}
             closeCreateGigDrawer={closeDrawer}
-            setCurrentStep={setCurrentStep}
+            setCurrentStep={navigateToStep}
           />
         )}
 
@@ -459,11 +575,22 @@ export default function CreateGigDrawer({
             selectedGigType={selectedGigType}
             setSelectedGigType={setSelectedGigType}
             closeCreateGigDrawer={closeDrawer}
-            setCurrentStep={setCurrentStep}
+            setCurrentStep={navigateToStep}
           />
         )}
 
-        {currentStep === 4 && (
+        {currentStep === 4 && isIqliqSalesFlow && (
+          <Step5IqliqSalesSelectProduct
+            officialBrandId={iqliqSalesOfficialBrandId}
+            selectedProductIds={selectedSalesProductIds}
+            setSelectedProductIds={setSelectedSalesProductIds}
+            closeCreateGigDrawer={closeDrawer}
+            setCurrentStep={navigateToStep}
+            progressBarClass="w-[58%]"
+          />
+        )}
+
+        {currentStep === 4 && !isIqliqSalesFlow && (
           <Step4FillDetails
             step4Form={step4Form}
             setStep4Form={setStep4Form}
@@ -479,11 +606,35 @@ export default function CreateGigDrawer({
             step4ImageFile={step4ImageFile}
             setStep4ImageFile={setStep4ImageFile}
             closeCreateGigDrawer={closeDrawer}
-            setCurrentStep={setCurrentStep}
+            setCurrentStep={navigateToStep}
           />
         )}
 
-        {currentStep === 5 && (
+        {currentStep === 5 && isIqliqSalesFlow && (
+          <Step4FillDetails
+            step4Form={step4Form}
+            setStep4Form={setStep4Form}
+            gigTypeOptions={gigTypeOptions}
+            selectedGigType={selectedGigType}
+            todayInputValue={todayInputValue}
+            minEndDate={minEndDate}
+            isStartDateValid={isStartDateValid}
+            isEndDateValid={isEndDateValid}
+            isDescriptionValid={isDescriptionValid}
+            step4CanProceed={step4CanProceed}
+            step4UploadInputRef={step4UploadInputRef}
+            step4ImageFile={step4ImageFile}
+            setStep4ImageFile={setStep4ImageFile}
+            closeCreateGigDrawer={closeDrawer}
+            setCurrentStep={navigateToStep}
+            backStep={4}
+            nextStep={6}
+            stepNumber={5}
+            progressBarClass="w-[72%]"
+          />
+        )}
+
+        {currentStep === 5 && !isIqliqSalesFlow && (
           <Step5ConfirmAgreement
             step4Form={step4Form}
             selectedGigCategory={selectedGigCategory}
@@ -492,18 +643,47 @@ export default function CreateGigDrawer({
             selectedSuccessAmount={selectedSuccessAmount}
             formatMMDDYYYY={formatMMDDYYYY}
             selectedInfluencerIds={selectedInfluencerIds}
-            influencers={influencers}
+            influencers={allInfluencers}
             setBrandAgreementAccepted={setBrandAgreementAccepted}
             brandAgreementAccepted={brandAgreementAccepted}
             allAgreed={allAgreed}
             isCreatingGig={isCreatingGig}
             handleConfirmCreateGig={handleConfirmCreateGig}
             closeCreateGigDrawer={closeDrawer}
-            setCurrentStep={setCurrentStep}
+            setCurrentStep={navigateToStep}
+            backStep={4}
           />
         )}
 
-        {currentStep === 6 && (
+        {currentStep === 6 && isIqliqSalesFlow && (
+          <Step5ConfirmAgreement
+            step4Form={step4Form}
+            selectedGigCategory={selectedGigCategory}
+            platformLabel={platformLabel}
+            selectedAmount={selectedAmount}
+            selectedSuccessAmount={selectedSuccessAmount}
+            formatMMDDYYYY={formatMMDDYYYY}
+            selectedInfluencerIds={selectedInfluencerIds}
+            influencers={allInfluencers}
+            setBrandAgreementAccepted={setBrandAgreementAccepted}
+            brandAgreementAccepted={brandAgreementAccepted}
+            allAgreed={allAgreed}
+            isCreatingGig={isCreatingGig}
+            handleConfirmCreateGig={handleConfirmCreateGig}
+            closeCreateGigDrawer={closeDrawer}
+            setCurrentStep={navigateToStep}
+            backStep={5}
+          />
+        )}
+
+        {currentStep === 6 && !isIqliqSalesFlow && (
+          <Step6Success
+            closeCreateGigDrawer={closeDrawer}
+            onViewGigs={handleViewGigsClick}
+          />
+        )}
+
+        {currentStep === 7 && (
           <Step6Success
             closeCreateGigDrawer={closeDrawer}
             onViewGigs={handleViewGigsClick}
