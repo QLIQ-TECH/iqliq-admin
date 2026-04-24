@@ -7,6 +7,7 @@ import { authApi, REFRESH_TOKEN_KEY } from '../lib/apiClient';
 const AuthContext = createContext();
 const ACCESS_TOKEN_KEY = 'qliq-admin-access-token';
 const USER_KEY = 'qliq-admin-user';
+const LEGACY_TOKENS_KEY = 'qliq-admin-tokens';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -30,6 +31,19 @@ export const AuthProvider = ({ children }) => {
     ]);
   };
 
+  const clearVendorOnboardingKeys = () => {
+    if (typeof window === 'undefined') return;
+    const keysToRemove = [
+      'access_token',
+      'refresh_token',
+      'email',
+      'id',
+      'role',
+      LEGACY_TOKENS_KEY,
+    ];
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       // Small delay to ensure localStorage is ready
@@ -37,7 +51,25 @@ export const AuthProvider = ({ children }) => {
       
       if (typeof window !== 'undefined') {
         const savedUser = localStorage.getItem(USER_KEY);
-        const savedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+        let savedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+
+        if (!savedToken) {
+          const legacyTokensRaw = localStorage.getItem(LEGACY_TOKENS_KEY);
+          if (legacyTokensRaw) {
+            try {
+              const legacyTokens = JSON.parse(legacyTokensRaw);
+              if (legacyTokens?.accessToken) {
+                savedToken = legacyTokens.accessToken;
+                localStorage.setItem(ACCESS_TOKEN_KEY, legacyTokens.accessToken);
+              }
+              if (legacyTokens?.refreshToken) {
+                localStorage.setItem(REFRESH_TOKEN_KEY, legacyTokens.refreshToken);
+              }
+            } catch {
+              localStorage.removeItem(LEGACY_TOKENS_KEY);
+            }
+          }
+        }
         
         console.log('🔄 Restoring session from localStorage:', {
           hasUser: !!savedUser,
@@ -69,10 +101,12 @@ export const AuthProvider = ({ children }) => {
         } else {
           const vendorAccess = localStorage.getItem('access_token');
           const vendorRefresh = localStorage.getItem('refresh_token');
-          if (vendorAccess && vendorRefresh) {
+          if (vendorAccess) {
             try {
               localStorage.setItem(ACCESS_TOKEN_KEY, vendorAccess);
-              localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
+              if (vendorRefresh) {
+                localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
+              }
               await verifyToken(vendorAccess);
               setIsLoading(false);
             } catch (e) {
@@ -129,6 +163,12 @@ export const AuthProvider = ({ children }) => {
       });
       if (typeof window !== 'undefined') {
         localStorage.setItem(USER_KEY, JSON.stringify(frontendUserData));
+        if (typeof frontendUserData.onboardingCompleted === 'boolean') {
+          localStorage.setItem('onboarding_completed', String(frontendUserData.onboardingCompleted));
+          if (frontendUserData.onboardingCompleted === true) {
+            clearVendorOnboardingKeys();
+          }
+        }
       }
       setIsLoading(false);
     } catch (error) {

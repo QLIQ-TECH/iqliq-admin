@@ -9,6 +9,8 @@ const Step3GigType = ({
   closeCreateGigDrawer,
   setCurrentStep,
 }) => {
+  const canProceed = Boolean(selectedGigType)
+
   return (
     <div className="w-full max-w-3xl mx-auto pt-4 h-full flex flex-col">
       <div className="h-2 rounded-full bg-gray-200 overflow-hidden mb-8">
@@ -83,7 +85,10 @@ const Step3GigType = ({
           <button
             type="button"
             onClick={() => setCurrentStep(4)}
-            className="px-8 h-[40px] rounded-full text-xl bg-[#0082FF]/30 text-[#0082FF]"
+            disabled={!canProceed}
+            className={`px-8 h-[40px] rounded-full text-xl ${
+              canProceed ? 'bg-[#0082FF]/30 text-[#0082FF]' : 'bg-[#0082FF]/30 text-[#0082FF] opacity-60 cursor-not-allowed'
+            }`}
           >
             Next
           </button>

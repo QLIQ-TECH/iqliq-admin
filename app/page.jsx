@@ -12,12 +12,12 @@ export default function Home() {
     if (isLoading) return;
 
     if (!user) {
-      window.location.assign('/onboarding/login');
+      window.location.assign('/login');
       return;
     }
 
     if (user.role === 'vendor' && user.onboardingCompleted === false) {
-      window.location.assign('/onboarding');
+      window.location.assign('/onboarding/virtual-assitance');
       return;
     }
     if (user.role === 'superadmin') {

@@ -11,6 +11,56 @@ import { Store, Save, Upload, Plus, Eye, Edit, MapPin, Phone, Mail, Star, Shoppi
 import vendorProfileService from '../../../../lib/services/vendorProfileService';
 import storeService from '../../../../lib/services/storeService';
 
+const DEFAULT_BUSINESS_HOURS = {
+  monday: '9:00 AM - 6:00 PM',
+  tuesday: '9:00 AM - 6:00 PM',
+  wednesday: '9:00 AM - 6:00 PM',
+  thursday: '9:00 AM - 6:00 PM',
+  friday: '9:00 AM - 6:00 PM',
+  saturday: '10:00 AM - 4:00 PM',
+  sunday: 'Closed',
+};
+
+const DEFAULT_SOCIAL = { facebook: '', twitter: '', instagram: '', linkedin: '' };
+
+/** Unwrap vendor API payloads (camelCase or snake_case, optional nesting). */
+function extractStoreProfileBody(res) {
+  if (!res || typeof res !== 'object') return null;
+  const d = res.data;
+  if (d && typeof d === 'object') {
+    if (d.data && typeof d.data === 'object') return d.data;
+    return d;
+  }
+  return null;
+}
+
+function mapRemoteToStoreForm(src) {
+  if (!src || typeof src !== 'object') return null;
+  const bh = src.businessHours || src.business_hours;
+  const sm = src.socialMedia || src.social_media;
+  return {
+    storeName: src.storeName ?? src.store_name ?? '',
+    storeDescription: src.storeDescription ?? src.store_description ?? '',
+    storeLogo: src.storeLogo ?? src.store_logo ?? '',
+    storeBanner: src.storeBanner ?? src.store_banner ?? '',
+    storeUrl: src.storeUrl ?? src.store_url ?? '',
+    address:
+      typeof src.address === 'string'
+        ? src.address
+        : [src.address?.street, src.address?.line1].filter(Boolean).join(', ') ||
+          src.street ||
+          '',
+    city: src.city ?? '',
+    state: src.state ?? '',
+    zipCode: src.zipCode ?? src.zip_code ?? '',
+    country: src.country || 'USA',
+    phone: src.phone ?? '',
+    email: src.email ?? '',
+    businessHours: bh && typeof bh === 'object' ? { ...DEFAULT_BUSINESS_HOURS, ...bh } : { ...DEFAULT_BUSINESS_HOURS },
+    socialMedia: sm && typeof sm === 'object' ? { ...DEFAULT_SOCIAL, ...sm } : { ...DEFAULT_SOCIAL },
+  };
+}
+
 export default function StoreProfilePage() {
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
@@ -28,21 +78,8 @@ export default function StoreProfilePage() {
     country: 'USA',
     phone: '',
     email: '',
-    businessHours: {
-      monday: '9:00 AM - 6:00 PM',
-      tuesday: '9:00 AM - 6:00 PM',
-      wednesday: '9:00 AM - 6:00 PM',
-      thursday: '9:00 AM - 6:00 PM',
-      friday: '9:00 AM - 6:00 PM',
-      saturday: '10:00 AM - 4:00 PM',
-      sunday: 'Closed'
-    },
-    socialMedia: {
-      facebook: '',
-      twitter: '',
-      instagram: '',
-      linkedin: ''
-    }
+    businessHours: { ...DEFAULT_BUSINESS_HOURS },
+    socialMedia: { ...DEFAULT_SOCIAL }
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -88,39 +125,14 @@ export default function StoreProfilePage() {
       
       const response = await vendorProfileService.getVendorStoreProfile(user?.vendorId || user?.id);
       console.log('📊 Store profile response:', response);
-      
-      const profileData = response.data || response;
-      if (profileData && Object.keys(profileData).length > 0) {
-        console.log('📋 Setting profile data:', profileData);
-        setFormData({
-          storeName: profileData.storeName || '',
-          storeDescription: profileData.storeDescription || '',
-          storeLogo: profileData.storeLogo || '',
-          storeBanner: profileData.storeBanner || '',
-          storeUrl: profileData.storeUrl || '',
-          address: profileData.address || '',
-          city: profileData.city || '',
-          state: profileData.state || '',
-          zipCode: profileData.zipCode || '',
-          country: profileData.country || 'USA',
-          phone: profileData.phone || '',
-          email: profileData.email || '',
-          businessHours: profileData.businessHours || {
-            monday: '9:00 AM - 6:00 PM',
-            tuesday: '9:00 AM - 6:00 PM',
-            wednesday: '9:00 AM - 6:00 PM',
-            thursday: '9:00 AM - 6:00 PM',
-            friday: '9:00 AM - 6:00 PM',
-            saturday: '10:00 AM - 4:00 PM',
-            sunday: 'Closed'
-          },
-          socialMedia: profileData.socialMedia || {
-            facebook: '',
-            twitter: '',
-            instagram: '',
-            linkedin: ''
-          }
-        });
+
+      const profileBody = extractStoreProfileBody(response);
+      if (profileBody && Object.keys(profileBody).length > 0) {
+        const mapped = mapRemoteToStoreForm(profileBody);
+        if (mapped) {
+          console.log('📋 Setting profile data (normalized):', mapped);
+          setFormData((prev) => ({ ...prev, ...mapped }));
+        }
       } else {
         console.log('📋 No profile data found or empty response, using defaults');
       }
@@ -156,6 +168,8 @@ export default function StoreProfilePage() {
         storesData = response.data.stores;
       } else if (response?.data && Array.isArray(response.data)) {
         storesData = response.data;
+      } else if (response?.data?.stores && Array.isArray(response.data.stores)) {
+        storesData = response.data.stores;
       } else if (response?.stores && Array.isArray(response.stores)) {
         storesData = response.stores;
       }
@@ -177,10 +191,15 @@ export default function StoreProfilePage() {
       
       const response = await vendorProfileService.updateVendorStoreProfile(formData);
       console.log('✅ Store profile updated:', response);
-      
-      // Force refresh the profile data after successful update
-      await fetchStoreProfile();
-      
+
+      const updatedBody = extractStoreProfileBody(response);
+      if (updatedBody && Object.keys(updatedBody).length > 0) {
+        const mapped = mapRemoteToStoreForm(updatedBody);
+        if (mapped) setFormData((prev) => ({ ...prev, ...mapped }));
+      } else {
+        await fetchStoreProfile();
+      }
+
       alert('Store profile updated successfully!');
     } catch (error) {
       console.error('❌ Error updating store profile:', error);
@@ -203,10 +222,10 @@ export default function StoreProfilePage() {
     try {
       setIsCreatingStore(true);
       
+      // ownerId is taken from JWT on the catalog service (vendorId || id) when omitted
       const storeDataToSubmit = {
         ...newStoreData,
-        ownerId: user?.vendorId || user?.id,
-        isActive: true
+        isActive: true,
       };
       
       console.log('Creating store with data:', storeDataToSubmit);
@@ -436,7 +455,8 @@ export default function StoreProfilePage() {
                 <h2 className="text-xl font-bold text-gray-900">Your Stores</h2>
                 <p className="text-gray-600 mt-1">Manage your store locations and information</p>
               </div>
-              <button 
+              <button
+                type="button"
                 onClick={() => setShowCreateStoreModal(true)}
                 className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
@@ -462,7 +482,8 @@ export default function StoreProfilePage() {
                 <p className="text-gray-600 mb-4">
                   You don't have any stores yet. Create your first store to get started.
                 </p>
-                <button 
+                <button
+                  type="button"
                   onClick={() => setShowCreateStoreModal(true)}
                   className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto"
                 >
@@ -473,7 +494,7 @@ export default function StoreProfilePage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {stores.map((store) => (
-                  <div key={store.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                  <div key={store._id || store.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
                     {/* Store Banner */}
                     <div className="h-32 bg-gradient-to-r from-blue-500 to-purple-600 relative">
                       {store.banner ? (
@@ -601,12 +622,13 @@ export default function StoreProfilePage() {
 
       {/* Create Store Modal */}
       {showCreateStoreModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
           <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Create New Store</h2>
-                <button 
+                <button
+                  type="button"
                   onClick={() => setShowCreateStoreModal(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >

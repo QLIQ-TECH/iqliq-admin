@@ -5,14 +5,54 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../contexts/AuthContext';
 import Sidebar from '../../../../components/Sidebar';
 import Header from '../../../../components/Header';
-import { Package, Upload, X, Plus, ArrowLeft } from 'lucide-react';
+import {
+  Package,
+  X,
+  Plus,
+  ArrowLeft,
+  FileText,
+  Layers,
+  CircleDollarSign,
+  Boxes,
+  Image as ImageIcon,
+  ListChecks,
+  LayoutGrid,
+  Search,
+  Settings2,
+  Shield,
+  Store,
+} from 'lucide-react';
+
+function ProductSection({ icon: Icon, title, description, children }) {
+  return (
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/40 sm:p-8">
+      <div className="mb-6 flex items-start gap-4 border-b border-slate-100 pb-5">
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"
+          aria-hidden
+        >
+          {Icon ? <Icon className="h-5 w-5" /> : <Package className="h-5 w-5" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
+          {description ? (
+            <p className="mt-1 text-sm leading-relaxed text-slate-500">{description}</p>
+          ) : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+import ImageUpload from '../../../../components/ImageUpload';
+import S3Status from '../../../../components/S3Status';
 import productService from '../../../../lib/services/productService';
 import vendorService from '../../../../lib/services/vendorService';
 import storeService from '../../../../lib/services/storeService';
 import attributeService from '../../../../lib/services/attributeService';
 
 export default function AddProductPage() {
-  const { user, isLoading, logout, tokens } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -93,8 +133,6 @@ export default function AddProductPage() {
   // Image upload state
   const [imageUrls, setImageUrls] = useState(['']);
   const [uploadedImages, setUploadedImages] = useState([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
   const [currentTag, setCurrentTag] = useState('');
   const [specKey, setSpecKey] = useState('');
   const [specValue, setSpecValue] = useState('');
@@ -559,148 +597,6 @@ export default function AddProductPage() {
     setFormData(prev => ({ ...prev, images }));
   };
 
-  // File upload handlers
-  const handleFileUpload = async (files) => {
-    if (!files || files.length === 0) return;
-    
-    // Check total image limit
-    const currentTotal = uploadedImages.length + imageUrls.filter(url => url.trim() !== '').length;
-    const availableSlots = 5 - currentTotal;
-    
-    if (availableSlots <= 0) {
-      alert('Maximum 5 images allowed. Please remove some images before adding new ones.');
-      return;
-    }
-    
-    setIsUploading(true);
-    
-    try {
-      // Validate files before upload
-      const validFiles = [];
-      for (let i = 0; i < Math.min(files.length, availableSlots); i++) {
-        const file = files[i];
-        
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-          alert(`File ${file.name} is not an image. Please select only image files.`);
-          continue;
-        }
-        
-        // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-          alert(`File ${file.name} is too large. Please select files smaller than 5MB.`);
-          continue;
-        }
-        
-        validFiles.push(file);
-      }
-      
-      if (validFiles.length === 0) {
-        setIsUploading(false);
-        return;
-      }
-      
-      // Use the product service to upload images
-      const uploadResult = await productService.uploadProductImages(validFiles);
-      
-      if (uploadResult.success) {
-        const newImages = uploadResult.data.map((result, index) => ({
-          url: result.url,
-          is_primary: uploadedImages.length === 0 && index === 0,
-          alt_text: formData.title || 'Product image',
-          uploaded: true
-        }));
-        
-        setUploadedImages(prev => [...prev, ...newImages]);
-        
-        // Update form data with all images (URLs + uploaded)
-        const allImages = [
-          ...uploadedImages,
-          ...newImages,
-          ...imageUrls.filter(url => url.trim() !== '').map((url, idx) => ({
-            url: url,
-            is_primary: uploadedImages.length === 0 && newImages.length === 0 && idx === 0,
-            alt_text: formData.title || 'Product image',
-            uploaded: false
-          }))
-        ];
-        
-        setFormData(prev => ({ ...prev, images: allImages }));
-      } else {
-        throw new Error(uploadResult.message || 'Upload failed');
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert(`Failed to upload images: ${error.message}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files);
-    }
-  };
-
-  const handleFileInput = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files);
-    }
-  };
-
-  const removeUploadedImage = (index) => {
-    const newImages = uploadedImages.filter((_, i) => i !== index);
-    setUploadedImages(newImages);
-    
-    // Update form data
-    const allImages = [
-      ...newImages,
-      ...imageUrls.filter(url => url.trim() !== '').map((url, idx) => ({
-        url: url,
-        is_primary: newImages.length === 0 && idx === 0,
-        alt_text: formData.title || 'Product image',
-        uploaded: false
-      }))
-    ];
-    
-    setFormData(prev => ({ ...prev, images: allImages }));
-  };
-
-  const setPrimaryImage = (index) => {
-    const newImages = uploadedImages.map((img, i) => ({
-      ...img,
-      is_primary: i === index
-    }));
-    setUploadedImages(newImages);
-    
-    // Update form data
-    const allImages = [
-      ...newImages,
-      ...imageUrls.filter(url => url.trim() !== '').map((url, idx) => ({
-        url: url,
-        is_primary: false,
-        alt_text: formData.title || 'Product image',
-        uploaded: false
-      }))
-    ];
-    
-    setFormData(prev => ({ ...prev, images: allImages }));
-  };
 
   // Helper functions for attribute handling
   const handleAttributeChange = (attributeName, value) => {
@@ -1139,42 +1035,57 @@ export default function AddProductPage() {
           user={user}
         />
         
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-6">
-          <div className="max-w-5xl mx-auto">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gradient-to-b from-slate-50 via-white to-indigo-50/40">
+          <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
             {/* Header */}
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={() => router.push('/vendor/products')}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="w-5 h-5 text-gray-600" />
-                </button>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Add New Product</h1>
-                  <p className="text-gray-600 mt-1">Fill in the product details below</p>
+            <div className="relative mb-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-6 shadow-md sm:p-8">
+              <div
+                className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-indigo-100/70 blur-3xl"
+                aria-hidden
+              />
+              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-4">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/vendor/products')}
+                    className="mt-0.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                    aria-label="Back to products"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Add product</h1>
+                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900 ring-1 ring-inset ring-amber-200/80">
+                        Draft until approved
+                      </span>
+                    </div>
+                    <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                      Walk through each section—required fields are marked. Images upload to your catalog storage; you
+                      can also paste image URLs.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Store Requirement Section */}
             {showStoreRequired && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
-                <div className="flex items-start">
-                  <div className="flex-shrink-0">
-                    <Package className="w-8 h-8 text-red-400" />
+              <div className="mb-8 rounded-2xl border border-red-200/90 bg-gradient-to-br from-red-50 to-white p-6 shadow-sm sm:p-8">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                    <Store className="h-6 w-6" />
                   </div>
-                  <div className="ml-3 flex-1">
-                    <h3 className="text-lg font-medium text-red-800 mb-2">
-                      Store Required
-                    </h3>
-                    <p className="text-red-700 mb-4">
-                      You need to create a store before adding products. A store helps organize your products and provides a professional presence for customers.
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-lg font-semibold text-red-900">Create a store first</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-red-800/90">
+                      Products are attached to a store. Add your store details below, then you can continue with this
+                      product.
                     </p>
-                    
+
                     {/* Store Creation Form */}
-                    <div className="bg-white rounded-lg p-4 border border-red-200">
-                      <h4 className="text-md font-medium text-gray-900 mb-4">Create Your Store</h4>
+                    <div className="mt-5 rounded-xl border border-red-100 bg-white p-5 shadow-sm">
+                      <h4 className="mb-4 text-base font-semibold text-slate-900">Store details</h4>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
@@ -1342,9 +1253,9 @@ export default function AddProductPage() {
                           type="button"
                           onClick={handleCreateStore}
                           disabled={isCreatingStore || !storeFormData.name}
-                          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {isCreatingStore ? 'Creating Store...' : 'Create Store'}
+                          {isCreatingStore ? 'Creating store…' : 'Create store'}
                         </button>
                       </div>
                     </div>
@@ -1353,34 +1264,32 @@ export default function AddProductPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-6" style={{ display: showStoreRequired ? 'none' : 'block' }}>
-              {/* Basic Information */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <Package className="w-5 h-5 mr-2" />
-                  Basic Information
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="space-y-8" style={{ display: showStoreRequired ? 'none' : 'block' }}>
+              <ProductSection
+                icon={FileText}
+                title="Basic information"
+                description="Clear titles and descriptions help customers find your product and reduce support questions."
+              >
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Product Title <span className="text-red-500">*</span>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Product title <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       name="title"
                       value={formData.title}
                       onChange={handleInputChange}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.title ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full rounded-xl border px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        errors.title ? 'border-red-400' : 'border-slate-200'
                       }`}
-                      placeholder="Enter product title"
+                      placeholder="e.g. Wireless earbuds — black"
                     />
                     {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
                   </div>
                   
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
                       Description <span className="text-red-500">*</span>
                     </label>
                     <textarea
@@ -1388,47 +1297,46 @@ export default function AddProductPage() {
                       value={formData.description}
                       onChange={handleInputChange}
                       rows={5}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.description ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full rounded-xl border px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        errors.description ? 'border-red-400' : 'border-slate-200'
                       }`}
-                      placeholder="Enter detailed product description"
+                      placeholder="Materials, sizing, what’s included, care instructions…"
                     />
                     {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
                   </div>
                   
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Short Description
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Short description <span className="font-normal text-slate-400">(optional)</span>
                     </label>
                     <textarea
                       name="short_description"
                       value={formData.short_description}
                       onChange={handleInputChange}
                       rows={2}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Enter short description (optional)"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="One or two lines for listings and cards"
                     />
                   </div>
                 </div>
-              </div>
+              </ProductSection>
 
-              {/* Categories & Brand */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Categories & Brand
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ProductSection
+                icon={Layers}
+                title="Category & brand"
+                description="Pick where the product lives in the catalog, then choose brand and which store sells it."
+              >
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Category Level 1 <span className="text-red-500">*</span>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Category level 1 <span className="text-red-500">*</span>
                     </label>
                     <select
                       name="level1"
                       value={formData.level1}
                       onChange={handleLevel1Change}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.level1 ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        errors.level1 ? 'border-red-400' : 'border-slate-200'
                       }`}
                     >
                       <option value="">Select Category</option>
@@ -1436,18 +1344,16 @@ export default function AddProductPage() {
                         <option key={cat._id} value={cat._id}>{cat.name}</option>
                       ))}
                     </select>
-                    {errors.level1 && <p className="text-red-500 text-sm mt-1">{errors.level1}</p>}
+                    {errors.level1 && <p className="mt-1 text-sm text-red-600">{errors.level1}</p>}
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Category Level 2
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Category level 2</label>
                     <select
                       name="level2"
                       value={formData.level2}
                       onChange={handleLevel2Change}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                       disabled={!formData.level1}
                     >
                       <option value="">Select Sub-Category</option>
@@ -1458,14 +1364,12 @@ export default function AddProductPage() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Category Level 3
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Category level 3</label>
                     <select
                       name="level3"
                       value={formData.level3}
                       onChange={handleLevel3Change}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                       disabled={!formData.level2}
                     >
                       <option value="">Select Sub-Category</option>
@@ -1476,14 +1380,12 @@ export default function AddProductPage() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Category Level 4
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Category level 4</label>
                     <select
                       name="level4"
                       value={formData.level4}
                       onChange={handleLevel4Change}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                       disabled={!formData.level3}
                     >
                       <option value="">Select Sub-Category</option>
@@ -1494,15 +1396,15 @@ export default function AddProductPage() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
                       Brand <span className="text-red-500">*</span>
                     </label>
                     <select
                       name="brand_id"
                       value={formData.brand_id}
                       onChange={handleInputChange}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.brand_id ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        errors.brand_id ? 'border-red-400' : 'border-slate-200'
                       }`}
                     >
                       <option value="">Select Brand</option>
@@ -1510,11 +1412,11 @@ export default function AddProductPage() {
                         <option key={brand._id} value={brand._id}>{brand.name}</option>
                       ))}
                     </select>
-                    {errors.brand_id && <p className="text-red-500 text-sm mt-1">{errors.brand_id}</p>}
+                    {errors.brand_id && <p className="mt-1 text-sm text-red-600">{errors.brand_id}</p>}
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
                       Store <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -1522,33 +1424,35 @@ export default function AddProductPage() {
                       value={formData.store_id}
                       onChange={handleInputChange}
                       disabled={stores.length === 0}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.store_id ? 'border-red-500' : 'border-gray-300'
-                      } ${stores.length === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        errors.store_id ? 'border-red-400' : 'border-slate-200'
+                      } ${stores.length === 0 ? 'cursor-not-allowed bg-slate-100 text-slate-500' : ''}`}
                     >
                       <option value="">{stores.length === 0 ? 'No stores available - Please create a store first' : 'Select Store'}</option>
                       {stores.map(store => (
                         <option key={store._id} value={store._id}>{store.name}</option>
                       ))}
                     </select>
-                    {errors.store_id && <p className="text-red-500 text-sm mt-1">{errors.store_id}</p>}
+                    {errors.store_id && <p className="mt-1 text-sm text-red-600">{errors.store_id}</p>}
                     {stores.length === 0 && (
-                      <p className="text-orange-600 text-sm mt-1 flex items-center">
-                        <span className="mr-1">⚠️</span>
-                        You must create a store before adding products. Please create a store above.
+                      <p className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-100">
+                        <span aria-hidden>⚠️</span>
+                        <span>Create a store first (see banner above) so you can attach this product to a storefront.</span>
                       </p>
                     )}
                   </div>
-                  
+
                   {/* Related Categories (Amazon-style) */}
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Related Categories (Optional)
-                      <span className="text-xs text-gray-500 ml-2">Select additional categories for cross-category attributes</span>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Related categories <span className="font-normal text-slate-400">(optional)</span>
                     </label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-32 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                    <p className="mb-2 text-xs text-slate-500">
+                      Extra categories unlock cross-category attributes when your catalog is configured for them.
+                    </p>
+                    <div className="grid max-h-36 grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/50 p-3 md:grid-cols-3">
                       {relatedCategories.map(category => (
-                        <label key={category._id} className="flex items-center space-x-2 text-sm">
+                        <label key={category._id} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
                           <input
                             type="checkbox"
                             checked={formData.related_categories.includes(category._id)}
@@ -1558,28 +1462,27 @@ export default function AddProductPage() {
                                 : formData.related_categories.filter(id => id !== category._id);
                               handleRelatedCategoryChange(newRelatedCategories);
                             }}
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                           />
-                          <span className="text-gray-700">{category.name}</span>
+                          <span>{category.name}</span>
                         </label>
                       ))}
                     </div>
                     {relatedCategories.length === 0 && formData.level1 && (
-                      <p className="text-sm text-gray-500 mt-1">No related categories found for this primary category.</p>
+                      <p className="mt-1 text-sm text-slate-500">No related categories found for this primary category.</p>
                     )}
                   </div>
                 </div>
-              </div>
+              </ProductSection>
 
-              {/* Pricing */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Pricing
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <ProductSection
+                icon={CircleDollarSign}
+                title="Pricing"
+                description="Set your list price here. Discounts can stay empty—promos and gigs can handle sales separately."
+              >
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
                       Price <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -1589,17 +1492,17 @@ export default function AddProductPage() {
                       onChange={handleInputChange}
                       step="0.01"
                       min="0"
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.price ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full rounded-xl border px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        errors.price ? 'border-red-400' : 'border-slate-200'
                       }`}
                       placeholder="0.00"
                     />
-                    {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
+                    {errors.price && <p className="mt-1 text-sm text-red-600">{errors.price}</p>}
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Discount Price
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Discount price <span className="font-normal text-slate-400">(optional)</span>
                     </label>
                     <input
                       type="number"
@@ -1608,14 +1511,17 @@ export default function AddProductPage() {
                       onChange={handleInputChange}
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="0.00"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Leave empty if none"
                     />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Sale pricing can also be set in Sales Gigs and Ecom promotions.
+                    </p>
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Cost Price
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Cost price <span className="font-normal text-slate-400">(optional)</span>
                     </label>
                     <input
                       type="number"
@@ -1624,23 +1530,22 @@ export default function AddProductPage() {
                       onChange={handleInputChange}
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="0.00"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Your cost (internal)"
                     />
                   </div>
                 </div>
-              </div>
+              </ProductSection>
 
-              {/* Inventory */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Inventory
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ProductSection
+                icon={Boxes}
+                title="Inventory & identifiers"
+                description="Stock and SKU help you and the platform track fulfillment. Leave SKU blank to auto-generate on save if your catalog supports it."
+              >
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Stock Quantity <span className="text-red-500">*</span>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Stock quantity <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="number"
@@ -1648,17 +1553,19 @@ export default function AddProductPage() {
                       value={formData.stock_quantity}
                       onChange={handleInputChange}
                       min="0"
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.stock_quantity ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full rounded-xl border px-4 py-2.5 text-sm shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        errors.stock_quantity ? 'border-red-400' : 'border-slate-200'
                       }`}
                       placeholder="0"
                     />
-                    {errors.stock_quantity && <p className="text-red-500 text-sm mt-1">{errors.stock_quantity}</p>}
+                    {errors.stock_quantity && (
+                      <p className="mt-1 text-sm text-red-600">{errors.stock_quantity}</p>
+                    )}
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Minimum Stock Level
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Minimum stock level <span className="font-normal text-slate-400">(optional)</span>
                     </label>
                     <input
                       type="number"
@@ -1666,205 +1573,133 @@ export default function AddProductPage() {
                       value={formData.min_stock_level}
                       onChange={handleInputChange}
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="0"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Reorder alert threshold"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      SKU
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      SKU <span className="font-normal text-slate-400">(optional)</span>
                     </label>
                     <input
                       type="text"
                       name="sku"
                       value={formData.sku}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                       placeholder="SKU-123"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Barcode
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Barcode <span className="font-normal text-slate-400">(optional)</span>
                     </label>
                     <input
                       type="text"
                       name="barcode"
                       value={formData.barcode}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="123456789"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="GTIN / EAN"
                     />
                   </div>
                 </div>
-              </div>
+              </ProductSection>
 
-              {/* Product Images */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <Upload className="w-5 h-5 mr-2" />
-                  Product Images <span className="text-red-500 ml-1">*</span>
-                </h2>
-                
-                {/* Drag and Drop Upload Area */}
-                <div
-                  className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                    dragActive
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  } ${isUploading ? 'opacity-50 pointer-events-none' : ''} ${
-                    uploadedImages.length + imageUrls.filter(url => url.trim() !== '').length >= 5 
-                      ? 'opacity-50 pointer-events-none' : ''
-                  }`}
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                >
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={handleFileInput}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    disabled={isUploading}
-                  />
-                  
-                  <div className="space-y-4">
-                    <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                      <Upload className="w-8 h-8 text-gray-400" />
-                    </div>
-                    
-                    <div>
-                      <p className="text-lg font-medium text-gray-900">
-                        {isUploading ? 'Uploading images...' : 
-                         uploadedImages.length + imageUrls.filter(url => url.trim() !== '').length >= 5 
-                           ? 'Maximum images reached' : 'Drag & drop images here'}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">
-                        {uploadedImages.length + imageUrls.filter(url => url.trim() !== '').length >= 5 
-                          ? 'Remove some images to add more' : 'or click to browse files'}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Supports JPG, PNG, GIF up to 5MB each (max 5 images)
-                      </p>
-                    </div>
-                    
-                    {isUploading && (
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                        <span className="text-sm text-blue-600">Uploading...</span>
-                      </div>
-                    )}
-                  </div>
+              <ProductSection
+                icon={ImageIcon}
+                title="Photos"
+                description="Upload up to five images. The first image (or the one you mark primary) is used in listings. You can mix uploads and image URLs."
+              >
+                <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                  <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">Storage status</p>
+                  <S3Status />
                 </div>
 
-                {/* Uploaded Images Preview */}
-                {uploadedImages.length > 0 && (
-                  <div className="mt-6">
-                    <h3 className="text-sm font-medium text-gray-700 mb-3">Uploaded Images</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                      {uploadedImages.map((image, index) => (
-                        <div key={index} className="relative group">
-                          <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                            <img
-                              src={image.url}
-                              alt={image.alt_text}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                          
-                          {/* Primary Badge */}
-                          {image.is_primary && (
-                            <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">
-                              Primary
-                            </div>
-                          )}
-                          
-                          {/* Action Buttons */}
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
-                            <div className="flex space-x-2">
-                              {!image.is_primary && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPrimaryImage(index)}
-                                  className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
-                                  title="Set as primary"
-                                >
-                                  <Package className="w-4 h-4" />
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => removeUploadedImage(index)}
-                                className="p-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors"
-                                title="Remove image"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <ImageUpload
+                  onImagesChange={(images) => {
+                    setUploadedImages(images);
+                    setFormData(prev => ({
+                      ...prev,
+                      images: [
+                        ...images,
+                        ...imageUrls.filter(url => url.trim() !== '').map((url, idx) => ({
+                          url: url,
+                          is_primary: images.length === 0 && idx === 0,
+                          alt_text: formData.title || 'Product image',
+                          uploaded: false
+                        }))
+                      ]
+                    }));
+                  }}
+                  maxImages={5}
+                  folder="products"
+                  existingImages={uploadedImages}
+                  label="Product Images"
+                  required={true}
+                />
 
-                {/* URL Input Section */}
-                <div className="mt-6">
-                  <h3 className="text-sm font-medium text-gray-700 mb-3">Or add images by URL</h3>
+                <div className="mt-8 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-4 sm:p-5">
+                  <h3 className="mb-3 text-sm font-semibold text-slate-800">Or paste image URLs</h3>
                   <div className="space-y-3">
                     {imageUrls.map((url, index) => (
-                      <div key={index} className="flex items-center space-x-2">
+                      <div key={index} className="flex items-center gap-2">
                         <input
                           type="url"
                           value={url}
                           onChange={(e) => handleImageUrlChange(index, e.target.value)}
-                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                           placeholder="https://example.com/image.jpg"
                         />
                         {index === 0 && uploadedImages.length === 0 && (
-                          <span className="text-sm text-blue-600 font-medium whitespace-nowrap">Primary</span>
+                          <span className="whitespace-nowrap rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
+                            Primary
+                          </span>
                         )}
                         {imageUrls.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeImageUrl(index)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded"
+                            className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
+                            aria-label="Remove URL"
                           >
-                            <X className="w-5 h-5" />
+                            <X className="h-5 w-5" />
                           </button>
                         )}
                       </div>
                     ))}
-                    
+
                     <button
                       type="button"
                       onClick={addImageUrl}
-                      className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                      className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 transition hover:text-indigo-800"
                     >
-                      <Plus className="w-4 h-4" />
-                      <span>Add Another URL</span>
+                      <Plus className="h-4 w-4" />
+                      Add another URL
                     </button>
                   </div>
                 </div>
 
-                {/* Image Count Info */}
-                <div className="mt-4 text-sm text-gray-500">
-                  Total images: {uploadedImages.length + imageUrls.filter(url => url.trim() !== '').length} / 5
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
+                  <span>
+                    Total images:{' '}
+                    <strong className="text-slate-900">
+                      {uploadedImages.length + imageUrls.filter((u) => u.trim() !== '').length}
+                    </strong>{' '}
+                    / 5
+                  </span>
                 </div>
-                
-                {errors.images && <p className="text-red-500 text-sm mt-2">{errors.images}</p>}
-              </div>
 
-              {/* Specifications */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Specifications
-                </h2>
-                
+                {errors.images && <p className="mt-2 text-sm text-red-600">{errors.images}</p>}
+              </ProductSection>
+
+              <ProductSection
+                icon={ListChecks}
+                title="Specifications"
+                description="Fields configured for this category. Required items must be completed before you can publish."
+              >
                 {attributeDefinitions.length > 0 ? (
                   <div className="space-y-4">
                     {attributeDefinitions
@@ -1884,29 +1719,30 @@ export default function AddProductPage() {
                       ))}
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-gray-500">
-                      No category specifications configured. Ask super admin to map attributes for this category.
-                    </p>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-600">
+                    No category specifications are configured yet. Ask a super admin to map attributes for this
+                    category.
                   </div>
                 )}
-              </div>
+              </ProductSection>
 
-              {/* Attributes */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Attributes (Amazon-Style Cross-Category)
-                </h2>
-                
+              <ProductSection
+                icon={LayoutGrid}
+                title="Attributes"
+                description="Cross-category attributes appear when your category has them. They power filters and search on the storefront."
+              >
                 {Object.keys(groupedAttributes).length > 0 ? (
                   <div className="space-y-6">
                     {Object.entries(groupedAttributes).map(([groupName, attributes]) => (
-                      <div key={groupName} className="border border-gray-200 rounded-lg p-4">
-                        <h3 className="text-md font-semibold text-blue-600 mb-3 flex items-center">
-                          <Package className="w-4 h-4 mr-2" />
+                      <div
+                        key={groupName}
+                        className="rounded-xl border border-slate-200/90 bg-slate-50/40 p-4 sm:p-5"
+                      >
+                        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-indigo-700">
+                          <Package className="h-4 w-4 shrink-0" />
                           {groupName}
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
                           {attributes
                             .filter(attr => attr.filterable || attr.searchable || attr.showInDetail || attr.required)
                             .sort((a, b) => a.displayOrder - b.displayOrder)
@@ -1945,199 +1781,191 @@ export default function AddProductPage() {
                       ))}
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-gray-500 mb-2">
-                      No mapped attributes for this category.
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Super admin needs to create and assign attributes to this category before vendors can fill them.
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-600">
+                    <p className="mb-2">No mapped attributes for this category.</p>
+                    <p>
+                      A super admin can create and assign attributes so you can fill structured fields here.
                     </p>
                   </div>
                 )}
-                {errors.attributes && <p className="text-red-500 text-sm mt-4">{errors.attributes}</p>}
-              </div>
+                {errors.attributes && <p className="mt-4 text-sm text-red-600">{errors.attributes}</p>}
+              </ProductSection>
 
-              {/* SEO & Marketing */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  SEO & Marketing
-                </h2>
-                
-                <div className="space-y-4">
+              <ProductSection
+                icon={Search}
+                title="SEO & discovery"
+                description="Optional fields help search engines and internal search. Tags make your product easier to browse."
+              >
+                <div className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Meta Title
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Meta title</label>
                     <input
                       type="text"
                       name="meta_title"
                       value={formData.meta_title}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="SEO meta title"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Shown in browser tab & search snippets"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Meta Description
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Meta description</label>
                     <textarea
                       name="meta_description"
                       value={formData.meta_description}
                       onChange={handleInputChange}
                       rows={3}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="SEO meta description"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="Short summary for search results"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tags
-                    </label>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {formData.tags.map(tag => (
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Tags</label>
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {formData.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
+                          className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-800 ring-1 ring-inset ring-indigo-100"
                         >
                           {tag}
                           <button
                             type="button"
                             onClick={() => removeTag(tag)}
-                            className="ml-2 hover:text-blue-900"
+                            className="ml-2 rounded p-0.5 hover:bg-indigo-100"
+                            aria-label={`Remove ${tag}`}
                           >
-                            <X className="w-3 h-3" />
+                            <X className="h-3 w-3" />
                           </button>
                         </span>
                       ))}
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         type="text"
                         value={currentTag}
                         onChange={(e) => setCurrentTag(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Add a tag"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addTag();
+                          }
+                        }}
+                        className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        placeholder="Type a tag and press Enter or Add"
                       />
                       <button
                         type="button"
                         onClick={addTag}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
                       >
-                        Add
+                        Add tag
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
+              </ProductSection>
 
-              {/* Product Settings */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Product Settings
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ProductSection
+                icon={Settings2}
+                title="Visibility & badges"
+                description="Control catalog status and optional merchandising flags. Most new products stay in draft until approved."
+              >
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Status
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Status</label>
                     <select
                       name="status"
                       value={formData.status}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     >
                       <option value="draft">Draft</option>
                       <option value="active">Active</option>
                       <option value="inactive">Inactive</option>
                     </select>
                   </div>
-                  
-                  <div className="space-y-3">
-                    <label className="flex items-center space-x-2">
+
+                  <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                    <label className="flex cursor-pointer items-center gap-2.5">
                       <input
                         type="checkbox"
                         name="is_featured"
                         checked={formData.is_featured}
                         onChange={handleInputChange}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <span className="text-sm text-gray-700">Featured Product</span>
+                      <span className="text-sm text-slate-700">Featured product</span>
                     </label>
-                    
-                    <label className="flex items-center space-x-2">
+
+                    <label className="flex cursor-pointer items-center gap-2.5">
                       <input
                         type="checkbox"
                         name="is_best_seller"
                         checked={formData.is_best_seller}
                         onChange={handleInputChange}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <span className="text-sm text-gray-700">Best Seller</span>
+                      <span className="text-sm text-slate-700">Best seller</span>
                     </label>
-                    
-                    <label className="flex items-center space-x-2">
+
+                    <label className="flex cursor-pointer items-center gap-2.5">
                       <input
                         type="checkbox"
                         name="is_new_seller"
                         checked={formData.is_new_seller}
                         onChange={handleInputChange}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <span className="text-sm text-gray-700">New Arrival</span>
+                      <span className="text-sm text-slate-700">New arrival</span>
                     </label>
-                    
-                    <label className="flex items-center space-x-2">
+
+                    <label className="flex cursor-pointer items-center gap-2.5">
                       <input
                         type="checkbox"
                         name="is_offer"
                         checked={formData.is_offer}
                         onChange={handleInputChange}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <span className="text-sm text-gray-700">On Offer</span>
+                      <span className="text-sm text-slate-700">On offer</span>
                     </label>
-                    
-                    <label className="flex items-center space-x-2">
+
+                    <label className="flex cursor-pointer items-center gap-2.5">
                       <input
                         type="checkbox"
                         name="special_deals_for_qliq_plus"
                         checked={formData.special_deals_for_qliq_plus}
                         onChange={handleInputChange}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <span className="text-sm text-gray-700">Qliq Plus Deal</span>
+                      <span className="text-sm text-slate-700">Qliq Plus deal</span>
                     </label>
-                    
-                    <label className="flex items-center space-x-2">
+
+                    <label className="flex cursor-pointer items-center gap-2.5">
                       <input
                         type="checkbox"
                         name="is_digital"
                         checked={formData.is_digital}
                         onChange={handleInputChange}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <span className="text-sm text-gray-700">Digital Product</span>
+                      <span className="text-sm text-slate-700">Digital product</span>
                     </label>
                   </div>
                 </div>
-              </div>
+              </ProductSection>
 
-
-              {/* Warranty */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Warranty & Support
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ProductSection
+                icon={Shield}
+                title="Warranty & support"
+                description="Optional warranty fields show on the product page where your storefront supports them."
+              >
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Warranty Period (months)
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Warranty period (months)
                     </label>
                     <input
                       type="number"
@@ -2145,43 +1973,49 @@ export default function AddProductPage() {
                       value={formData.warranty_period}
                       onChange={handleInputChange}
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="12"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="e.g. 12"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Warranty Type
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Warranty type</label>
                     <input
                       type="text"
                       name="warranty_type"
                       value={formData.warranty_type}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Manufacturer Warranty"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder="e.g. Manufacturer warranty"
                     />
                   </div>
                 </div>
-              </div>
+              </ProductSection>
 
-              {/* Form Actions */}
-              <div className="flex items-center justify-end space-x-4 bg-white rounded-lg shadow-sm p-6">
+              <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-4 shadow-lg shadow-slate-300/30 backdrop-blur supports-[backdrop-filter]:bg-white/90 sm:flex-row sm:items-center sm:justify-end sm:gap-4 sm:p-5">
+                <p className="mr-auto hidden text-xs text-slate-500 sm:block">
+                  You can keep working; scroll up to edit any section before submitting.
+                </p>
                 <button
                   type="button"
                   onClick={() => router.push('/vendor/products')}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="order-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 sm:order-1"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading || stores.length === 0 || !formData.store_id}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={stores.length === 0 ? 'You must create a store before adding products' : !formData.store_id ? 'Please select a store' : ''}
+                  className="order-1 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:order-2"
+                  title={
+                    stores.length === 0
+                      ? 'You must create a store before adding products'
+                      : !formData.store_id
+                        ? 'Please select a store'
+                        : ''
+                  }
                 >
-                  {loading ? 'Creating...' : 'Create Product'}
+                  {loading ? 'Creating…' : 'Create product'}
                 </button>
               </div>
             </form>
