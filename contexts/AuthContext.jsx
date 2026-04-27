@@ -1,8 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import apiService from '../lib/api-debug';
 import { authApi, REFRESH_TOKEN_KEY } from '../lib/apiClient';
+import { loginApi } from '../src/api/services/auth.api';
 
 const AuthContext = createContext();
 const ACCESS_TOKEN_KEY = 'qliq-admin-access-token';
@@ -204,48 +204,76 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       setIsLoading(true);
-      const response = await apiService.login(email, password);
-      
-      const { user: userData, tokens: tokenData } = response;
-      const accessToken = tokenData?.accessToken || response?.accessToken || null;
+      const res = await loginApi({
+        email,
+        password,
+        roles: ['vendor', 'brand', 'admin', 'manager', 'super_admin'],
+      });
+
+      const userData = res?.data?.user;
+      const tokenData = res?.data?.tokens;
+      const accessToken = tokenData?.accessToken || null;
       const refreshToken = tokenData?.refreshToken || null;
-      if (!accessToken) {
-        throw new Error('No access token returned from login');
+
+      if (!userData || !accessToken) {
+        throw new Error('Login failed: tokens missing from response');
       }
-      
-      // Map backend roles to frontend roles
-      let frontendRole = 'vendor'; // default
-      if (userData.role === 'admin' || userData.role === 'manager' || userData.role === 'super_admin') {
+
+      let frontendRole = 'vendor';
+      if (
+        userData.role === 'admin' ||
+        userData.role === 'manager' ||
+        userData.role === 'super_admin'
+      ) {
         frontendRole = 'superadmin';
       }
-      
-      const normalizedUserId = userData.id || userData._id;
+
+      const normalizedUserId = userData.id || userData._id || '';
+      const onboardingCompleted =
+        typeof userData.onboardingCompleted === 'boolean'
+          ? userData.onboardingCompleted
+          : false;
+
       const frontendUserData = {
         id: normalizedUserId,
         email: userData.email,
-        name: userData.name,
+        name: userData.name || '',
         role: frontendRole,
-        avatar: userData.name.charAt(0).toUpperCase(),
-        phone: userData.phone,
-        cognitoUserId: userData.cognitoUserId,
-        vendorId: userData.vendorId || normalizedUserId, // Add vendorId field
+        avatar: (userData.name || 'U').charAt(0).toUpperCase(),
+        phone: userData.phone || '',
+        cognitoUserId: userData.cognitoUserId || '',
+        vendorId: userData.vendorId || normalizedUserId,
+        onboardingCompleted,
       };
 
       setUser(frontendUserData);
       setTokens({ accessToken, refreshToken: refreshToken || null });
-      
-      // Store in localStorage only (simple approach)
+
       if (typeof window !== 'undefined') {
         localStorage.setItem(USER_KEY, JSON.stringify(frontendUserData));
         localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-        localStorage.setItem('qliq-admin-tokens', JSON.stringify({ accessToken, refreshToken: refreshToken || null }));
+        localStorage.setItem(
+          LEGACY_TOKENS_KEY,
+          JSON.stringify({ accessToken, refreshToken: refreshToken || null })
+        );
         if (refreshToken) {
           localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
         } else {
           localStorage.removeItem(REFRESH_TOKEN_KEY);
         }
+
+        localStorage.setItem('access_token', accessToken);
+        if (refreshToken) {
+          localStorage.setItem('refresh_token', refreshToken);
+        } else {
+          localStorage.removeItem('refresh_token');
+        }
+        if (userData.email) localStorage.setItem('email', userData.email);
+        if (normalizedUserId) localStorage.setItem('id', normalizedUserId);
+        if (userData.role) localStorage.setItem('role', userData.role);
+        localStorage.setItem('onboarding_completed', String(onboardingCompleted));
       }
-      
+
       return { success: true, user: frontendUserData };
     } catch (error) {
       console.error('Login failed:', error);
