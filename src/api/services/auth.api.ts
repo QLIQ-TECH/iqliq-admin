@@ -1,0 +1,60 @@
+import type {
+  LoginRequest,
+  LoginResponse,
+  SignUpRequest,
+  SignUpResponse,
+} from '@/types/brand';
+import { http } from '../client';
+import type { ResetPasswordRequest, ResetPasswordResponse } from '@/lib/types';
+
+export const forgotPasswordApi = async (data: { email: string ,returnTo: string}) => {
+  return http.post("auth", "/api/auth/request-reset", data);
+};
+
+export const confirmForgotPasswordApi = async (data: ResetPasswordRequest): Promise<ResetPasswordResponse> => {
+  return http.post<ResetPasswordResponse>("auth", "/api/auth/reset-password", data);
+};
+
+
+export const loginApi = async (data: LoginRequest): Promise<LoginResponse> => {
+  return http.post<LoginResponse>('auth', '/api/auth/login', data);
+};
+
+export const sendEmailOtp = async (data: { email: string }) => {
+  return http.post('auth', '/api/otp/send-otp', data);
+};
+
+export const verifyEmailOtp = async (data: { email: string; otp: number }) => {
+  return http.post('auth', '/api/otp/verify-otp', data);
+};
+
+export const sendWhatsappOtp = async (data: { phone: string }) => {
+  return http.post('message', '/api/otp/send', data);
+};
+
+export const verifyWhatsappOtp = async (data: { phone: string; otp: number }) => {
+  return http.post('message', '/api/otp/verify', data);
+};
+
+export const signUpApi = async ( data: SignUpRequest) => {
+  return http.post<SignUpResponse>('auth', '/api/auth/signup', data);
+};
+
+
+export const getOAuthRedirectUrl = async (params: {
+  returnTo: string;
+  type: "web" | "mobile";
+  provider: "Google" | "Facebook";
+  roles?: string[];
+}) => {
+  const res = await http.get<{ data: { url: string } }>(
+    "auth",
+    "/api/oauth/url",
+    { params }
+  );
+  return res.data.url;
+};
+
+export const verifyRefferalCode = async (code: string) => {
+  return http.get<{ data: string[] }>('amp', `/api/users/verify-referral-code/${code}`);
+};
