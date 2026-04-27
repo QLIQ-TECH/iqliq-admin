@@ -17,14 +17,16 @@ import {
   loginSchema,
   type LoginFormValues,
 } from '@/validation/validation.schema';
-import { getOAuthRedirectUrl, loginApi } from '@/api/services/auth.api';
+import { getOAuthRedirectUrl } from '@/api/services/auth.api';
 import type { AxiosError } from 'axios';
 import { useAppToast } from '@/hooks/useAppToast';
 import PasswordInput from '@/components/ui/PasswordInput';
 import { redirectToHostApp } from '@/lib/utils';
+import { useAuth } from '../../../../contexts/AuthContext';
 
 const LoginForm = () => {
   const toast = useAppToast();
+  const { login } = useAuth();
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -35,56 +37,21 @@ const LoginForm = () => {
 
   async function onSubmit(values: LoginFormValues): Promise<void> {
     try {
+      const result = await login(values.email, values.password);
+      const loggedInUser = result?.user;
+      toast.success('Login successful');
 
-      const res = await loginApi({roles:["vendor","brand"],...values});
-
-      if (res?.data?.tokens) {
-        console.log(res.data);
-        toast.success('Login successful');
-        localStorage.setItem(
-          "onboarding_completed",
-          res.data.user.onboardingCompleted.toString()
-        );
-        localStorage.setItem('access_token', res.data.tokens.accessToken);
-        localStorage.setItem('refresh_token', res.data.tokens.refreshToken);
-        try {
-          const mappedRole =
-            res.data.user.role === 'admin' ||
-            res.data.user.role === 'manager' ||
-            res.data.user.role === 'super_admin'
-              ? 'superadmin'
-              : 'vendor';
-          const u = res.data.user as unknown as {
-            vendorId?: string;
-            cognitoUserId?: string;
-            onboardingCompleted?: boolean;
-          };
-          const adminUser = {
-            id: res.data.user.id,
-            email: res.data.user.email,
-            name: res.data.user.name || '',
-            role: mappedRole,
-            avatar: (res.data.user.name || 'U').charAt(0).toUpperCase(),
-            phone: res.data.user.phone || '',
-            cognitoUserId: u.cognitoUserId || '',
-            vendorId: u.vendorId || res.data.user.id,
-            onboardingCompleted: u.onboardingCompleted ?? false,
-          };
-          const adminTokens = {
-            accessToken: res.data.tokens.accessToken,
-            refreshToken: res.data.tokens.refreshToken,
-          };
-          localStorage.setItem('qliq-admin-user', JSON.stringify(adminUser));
-          localStorage.setItem('qliq-admin-tokens', JSON.stringify(adminTokens));
-        } catch {
-          // best-effort mapping; ignore if shape differs
-        }
-
-        redirectToHostApp('/vendor');
-      } else {
-        toast.error('Login failed: Tokens missing from response');
-        console.error('Login failed: Tokens missing', res);
+      if (loggedInUser?.role === 'superadmin') {
+        redirectToHostApp('/admin');
+        return;
       }
+
+      if (loggedInUser?.role === 'vendor' && loggedInUser.onboardingCompleted === false) {
+        redirectToHostApp('/onboarding/virtual-assitance');
+        return;
+      }
+
+      redirectToHostApp('/vendor');
     } catch (err) {
       const axiosError = err as AxiosError<{ message?: string }>;
 

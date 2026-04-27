@@ -16,6 +16,8 @@ export default function Login() {
     if (user) {
       if (user.role === 'superadmin') {
         router.replace('/admin');
+      } else if (user.role === 'vendor' && user.onboardingCompleted === false) {
+        router.replace('/onboarding/virtual-assitance');
       } else if (user.role === 'vendor') {
         router.replace('/vendor');
       }
