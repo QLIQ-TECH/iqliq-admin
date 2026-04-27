@@ -23,7 +23,11 @@ const VendorDashboard = () => {
 
   useEffect(() => {
     const fetchVendorProducts = async () => {
-      if (!user?.id) return;
+      if (!user?.id) {
+        setProducts([]);
+        setIsProductsLoading(false);
+        return;
+      }
       try {
         setIsProductsLoading(true);
         const response = await productService.getAllProducts({

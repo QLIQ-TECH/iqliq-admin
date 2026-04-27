@@ -1,6 +1,8 @@
 import '../styles/globals.css'
+import 'react-international-phone/style.css'
 import { AuthProvider } from '../contexts/AuthContext'
 import { MetricsProvider } from '../contexts/MetricsContext'
+import { Toaster } from 'sonner'
 
 export const metadata = {
   title: 'QLIQ Admin Dashboard',
@@ -14,6 +16,7 @@ export default function RootLayout({ children }) {
         <AuthProvider>
           <MetricsProvider>
             {children}
+            <Toaster richColors position="top-right" expand={true} />
           </MetricsProvider>
         </AuthProvider>
       </body>
