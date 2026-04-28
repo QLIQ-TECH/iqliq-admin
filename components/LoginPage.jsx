@@ -150,7 +150,7 @@ const LoginPage = () => {
 
             <div className="mt-4">
               <a
-                href="/onboarding/login"
+                href="/onboarding/sign-up"
                 className="block w-full text-center py-3 px-4 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
               >
                 Vendor Onboarding
