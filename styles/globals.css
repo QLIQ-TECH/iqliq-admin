@@ -58,3 +58,20 @@
     @apply bg-background text-foreground;
   }
 }
+.custom-phone-input .react-international-phone-input {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.custom-phone-input .react-international-phone-country-selector {
+  border: none !important;
+  margin-left: 12px;
+
+}
+
+.custom-phone-input .react-international-phone-country-selector-button {
+  border: none !important;
+  background: transparent !important;
+}
