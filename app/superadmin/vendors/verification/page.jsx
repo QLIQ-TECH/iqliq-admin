@@ -29,6 +29,8 @@ export default function VendorVerification() {
   const [loading, setLoading] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -59,16 +61,11 @@ export default function VendorVerification() {
       // Use the data as-is from the API (no transformation needed)
       const vendorsData = response.data || [];
       
-      // Add default business name and documents if not present, and normalize ID field
+      // Normalize ID/business fields without injecting fake documents
       const transformedVendors = vendorsData.map(vendor => ({
         ...vendor,
         id: vendor.id || vendor._id, // Handle both id and _id fields
-        businessName: vendor.businessName || 'N/A',
-        documents: vendor.documents || {
-          businessLicense: 'business_license.pdf',
-          taxId: 'tax_id.pdf',
-          bankAccount: 'bank_account.pdf'
-        }
+        businessName: vendor.businessName || 'N/A'
       }));
       
       setVendors(transformedVendors);
@@ -169,8 +166,8 @@ export default function VendorVerification() {
 
   const stats = {
     total: vendors.length,
-    pending: vendors.filter(v => !v.isVerified && v.status !== 'rejected').length,
-    verified: vendors.filter(v => v.isVerified).length,
+    pending: vendors.filter(v => !v.verified && v.status !== 'rejected').length,
+    verified: vendors.filter(v => v.verified).length,
     rejected: vendors.filter(v => v.status === 'rejected').length
   };
 
@@ -496,7 +493,15 @@ export default function VendorVerification() {
                           <FileText className="h-5 w-5 text-gray-400" />
                           <span className="text-sm text-gray-900">Business License</span>
                         </div>
-                        <button className="text-blue-600 hover:text-blue-800 text-sm">View</button>
+                        <button
+                          onClick={() => {
+                            setSelectedDocument({ label: 'Business License', url: selectedVendor.documents.businessLicense });
+                            setShowDocumentModal(true);
+                          }}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          View
+                        </button>
                       </div>
                     )}
                     {selectedVendor.documents?.taxId && (
@@ -505,7 +510,15 @@ export default function VendorVerification() {
                           <FileText className="h-5 w-5 text-gray-400" />
                           <span className="text-sm text-gray-900">Tax ID</span>
                         </div>
-                        <button className="text-blue-600 hover:text-blue-800 text-sm">View</button>
+                        <button
+                          onClick={() => {
+                            setSelectedDocument({ label: 'Tax ID', url: selectedVendor.documents.taxId });
+                            setShowDocumentModal(true);
+                          }}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          View
+                        </button>
                       </div>
                     )}
                     {selectedVendor.documents?.bankAccount && (
@@ -514,34 +527,24 @@ export default function VendorVerification() {
                           <FileText className="h-5 w-5 text-gray-400" />
                           <span className="text-sm text-gray-900">Bank Account</span>
                         </div>
-                        <button className="text-blue-600 hover:text-blue-800 text-sm">View</button>
+                        <button
+                          onClick={() => {
+                            setSelectedDocument({ label: 'Bank Account', url: selectedVendor.documents.bankAccount });
+                            setShowDocumentModal(true);
+                          }}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          View
+                        </button>
                       </div>
                     )}
+                    {!selectedVendor.documents?.businessLicense &&
+                      !selectedVendor.documents?.taxId &&
+                      !selectedVendor.documents?.bankAccount && (
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">No documents uploaded.</div>
+                      )}
                   </div>
                 </div>
-
-                {!selectedVendor.verified && (
-                  <div className="flex gap-3 pt-4 border-t">
-                    <button
-                      onClick={() => {
-                        handleVerify(selectedVendor.id);
-                        setShowModal(false);
-                      }}
-                      className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      Verify Vendor
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleReject(selectedVendor.id);
-                        setShowModal(false);
-                      }}
-                      className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-                    >
-                      Reject Vendor
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
             
@@ -575,6 +578,34 @@ export default function VendorVerification() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showDocumentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-xl w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">{selectedDocument?.label || 'Document'}</h3>
+              <button onClick={() => setShowDocumentModal(false)} className="text-gray-500 hover:text-gray-700">
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+            {selectedDocument?.url ? (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700 break-all">{selectedDocument.url}</p>
+                <a
+                  href={selectedDocument.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Open Document
+                </a>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600">No documents uploaded.</p>
+            )}
           </div>
         </div>
       )}

@@ -51,6 +51,8 @@ export default function EditProductPage() {
     price: '',
     discount_price: '',
     cost_price: '',
+    vat_enabled: true,
+    vat_percentage: '5',
     stock_quantity: '',
     min_stock_level: '',
     status: 'draft',
@@ -108,6 +110,8 @@ export default function EditProductPage() {
         price: String(product.price ?? ''),
         discount_price: String(product.discount_price ?? ''),
         cost_price: String(product.cost_price ?? ''),
+        vat_enabled: Boolean(product.price_includes_vat),
+        vat_percentage: String(product.vat_percentage ?? 5),
         stock_quantity: String(product.stock_quantity ?? 0),
         min_stock_level: String(product.min_stock_level ?? ''),
         status: product.status || 'draft',
@@ -291,6 +295,8 @@ export default function EditProductPage() {
         price: Number(formData.price),
         discount_price: formData.discount_price ? Number(formData.discount_price) : undefined,
         cost_price: formData.cost_price ? Number(formData.cost_price) : undefined,
+        vat_percentage: 5,
+        price_includes_vat: Boolean(formData.vat_enabled),
         stock_quantity: Number(formData.stock_quantity),
         min_stock_level: formData.min_stock_level ? Number(formData.min_stock_level) : undefined,
         status: formData.status,
@@ -477,6 +483,33 @@ export default function EditProductPage() {
                     placeholder="0" 
                   />
                   {errors.stock_quantity && <p className="text-red-500 text-sm mt-1">{errors.stock_quantity}</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VAT Mode</label>
+                  <select
+                    name="vat_enabled"
+                    value={String(formData.vat_enabled)}
+                    onChange={(e) => setFormData(prev => ({ ...prev, vat_enabled: e.target.value === 'true' }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="true">With VAT (price already includes 5%)</option>
+                    <option value="false">Without VAT (add 5% on display)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VAT Percentage</label>
+                  <input
+                    name="vat_percentage"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.vat_percentage}
+                    onChange={handleChange}
+                    disabled={!formData.vat_enabled}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                  />
                 </div>
               </div>
 

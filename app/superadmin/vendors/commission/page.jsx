@@ -459,7 +459,7 @@ export default function CommissionSettings() {
                           return matchesSearch && matchesFilter;
                         })
                         .map((vendor) => (
-                        <tr key={vendor.id} className="hover:bg-gray-50">
+                        <tr key={vendor.id || vendor._id || vendor.vendorId} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">{vendor.name}</div>
                           </td>
@@ -530,7 +530,8 @@ export default function CommissionSettings() {
                                     onClick={() => {
                                       if (confirm(`Reset commission rate for ${vendor.name} to global default?`)) {
                                         // Reset to global default
-                                        handleVendorCommissionUpdate(vendor.id, globalSettings.defaultCommission);
+                                        const vendorId = vendor.id || vendor._id || vendor.vendorId;
+                                        handleVendorCommissionUpdate(vendorId, globalSettings.defaultCommission);
                                       }
                                     }}
                                     className="text-orange-600 hover:text-orange-900"

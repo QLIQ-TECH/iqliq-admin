@@ -521,9 +521,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) 
                 <p className="text-sm font-medium text-gray-900">
                   {userType === 'superadmin' ? 'Super Admin' : 'Vendor'}
                 </p>
-                <p className="text-xs text-gray-500 truncate">
-                  {user?.email || 'admin@iqliq.com'}
-                </p>
               </div>
             </div>
             <button 

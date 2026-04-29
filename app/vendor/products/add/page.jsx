@@ -45,7 +45,6 @@ function ProductSection({ icon: Icon, title, description, children }) {
   );
 }
 import ImageUpload from '../../../../components/ImageUpload';
-import S3Status from '../../../../components/S3Status';
 import productService from '../../../../lib/services/productService';
 import vendorService from '../../../../lib/services/vendorService';
 import storeService from '../../../../lib/services/storeService';
@@ -89,6 +88,8 @@ export default function AddProductPage() {
     price: '',
     discount_price: '',
     cost_price: '',
+    vat_enabled: true,
+    vat_percentage: '5',
     
     // Inventory
     stock_quantity: '',
@@ -160,6 +161,7 @@ export default function AddProductPage() {
       postalCode: ''
     }
   });
+  const [storePreviewState, setStorePreviewState] = useState({ logoValid: null, bannerValid: null });
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -211,7 +213,8 @@ export default function AddProductPage() {
       // Fetch vendor's stores
       try {
         // Validate user ID before making API call
-        if (!user.id) {
+        const ownerId = user.vendorId || user.id;
+        if (!ownerId) {
           console.error('❌ No user ID available for store fetch');
           setStores([]);
           setShowStoreRequired(true);
@@ -220,9 +223,9 @@ export default function AddProductPage() {
         
         // Force cache bypass to get fresh data
         const shouldClearCache = true;
-        const storesRes = await storeService.getStoresByVendor(user.id, shouldClearCache);
+        const storesRes = await storeService.getStoresByVendor(ownerId, shouldClearCache);
         console.log('=== STORE FETCH DEBUG ===');
-        console.log('User ID for store fetch:', user.id);
+        console.log('User ID for store fetch:', ownerId);
         console.log('User ID type:', typeof user.id);
         console.log('User ID length:', user.id?.length);
         console.log('Full user object:', user);
@@ -286,12 +289,12 @@ export default function AddProductPage() {
     try {
       const storeData = {
         ...storeFormData,
-        ownerId: user.id,
+        ownerId: user.vendorId || user.id,
         isActive: true
       };
       
       console.log('Creating store with data:', storeData);
-      console.log('User ID being used:', user.id);
+      console.log('User ID being used:', user.vendorId || user.id);
       
       const response = await storeService.createStore(storeData);
       console.log('Store created response:', response);
@@ -991,6 +994,8 @@ export default function AddProductPage() {
         price: parseFloat(formData.price),
         discount_price: formData.discount_price ? parseFloat(formData.discount_price) : undefined,
         cost_price: formData.cost_price ? parseFloat(formData.cost_price) : undefined,
+        vat_percentage: 5,
+        price_includes_vat: Boolean(formData.vat_enabled),
         stock_quantity: parseInt(formData.stock_quantity),
         min_stock_level: formData.min_stock_level ? parseInt(formData.min_stock_level) : undefined,
         warranty_period: formData.warranty_period ? parseInt(formData.warranty_period) : undefined
@@ -1136,9 +1141,11 @@ export default function AddProductPage() {
                                   src={storeFormData.logo} 
                                   alt="Store Logo Preview" 
                                   className="w-16 h-16 object-cover rounded-lg border border-gray-300"
-                                  onError={(e) => e.target.style.display = 'none'}
+                                  onLoad={() => setStorePreviewState(prev => ({ ...prev, logoValid: true }))}
+                                  onError={() => setStorePreviewState(prev => ({ ...prev, logoValid: false }))}
                                 />
-                                <span className="text-xs text-green-600">✓ Preview loaded</span>
+                                {storePreviewState.logoValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                                {storePreviewState.logoValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
                               </div>
                             )}
                             <p className="text-xs text-gray-500">Enter image URL for your store logo</p>
@@ -1164,9 +1171,11 @@ export default function AddProductPage() {
                                   src={storeFormData.banner} 
                                   alt="Store Banner Preview" 
                                   className="w-full h-24 object-cover rounded-lg border border-gray-300"
-                                  onError={(e) => e.target.style.display = 'none'}
+                                  onLoad={() => setStorePreviewState(prev => ({ ...prev, bannerValid: true }))}
+                                  onError={() => setStorePreviewState(prev => ({ ...prev, bannerValid: false }))}
                                 />
-                                <span className="text-xs text-green-600">✓ Preview loaded</span>
+                                {storePreviewState.bannerValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                                {storePreviewState.bannerValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
                               </div>
                             )}
                             <p className="text-xs text-gray-500">Enter image URL for your store banner</p>
@@ -1535,6 +1544,33 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
+                <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">VAT mode</label>
+                    <select
+                      name="vat_enabled"
+                      value={String(formData.vat_enabled)}
+                      onChange={(e) => setFormData(prev => ({ ...prev, vat_enabled: e.target.value === 'true' }))}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="true">With VAT (price already includes 5%)</option>
+                      <option value="false">Without VAT (add 5% on display)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">VAT percentage</label>
+                    <input
+                      type="number"
+                      name="vat_percentage"
+                      value={formData.vat_percentage}
+                      onChange={handleInputChange}
+                      step="0.01"
+                      min="0"
+                      disabled={!formData.vat_enabled}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100"
+                    />
+                  </div>
+                </div>
               </ProductSection>
 
               <ProductSection
@@ -1613,11 +1649,6 @@ export default function AddProductPage() {
                 title="Photos"
                 description="Upload up to five images. The first image (or the one you mark primary) is used in listings. You can mix uploads and image URLs."
               >
-                <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                  <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">Storage status</p>
-                  <S3Status />
-                </div>
-
                 <ImageUpload
                   onImagesChange={(images) => {
                     setUploadedImages(images);
