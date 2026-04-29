@@ -50,10 +50,10 @@ function mapRemoteToStoreForm(src) {
         : [src.address?.street, src.address?.line1].filter(Boolean).join(', ') ||
           src.street ||
           '',
-    city: src.city ?? '',
-    state: src.state ?? '',
-    zipCode: src.zipCode ?? src.zip_code ?? '',
-    country: src.country || 'USA',
+    city: src.city ?? src.address?.city ?? '',
+    state: src.state ?? src.address?.state ?? '',
+    zipCode: src.zipCode ?? src.zip_code ?? src.address?.zipCode ?? src.address?.postalCode ?? '',
+    country: src.country || src.address?.country || 'USA',
     phone: src.phone ?? '',
     email: src.email ?? '',
     businessHours: bh && typeof bh === 'object' ? { ...DEFAULT_BUSINESS_HOURS, ...bh } : { ...DEFAULT_BUSINESS_HOURS },
@@ -102,6 +102,7 @@ export default function StoreProfilePage() {
       postalCode: ''
     }
   });
+  const [previewState, setPreviewState] = useState({ logoValid: null, bannerValid: null });
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -189,7 +190,25 @@ export default function StoreProfilePage() {
       setSaving(true);
       console.log('🏪 Updating store profile:', formData);
       
-      const response = await vendorProfileService.updateVendorStoreProfile(formData);
+      const payload = {
+        ...formData,
+        store_name: formData.storeName,
+        store_description: formData.storeDescription,
+        store_logo: formData.storeLogo,
+        store_banner: formData.storeBanner,
+        store_url: formData.storeUrl,
+        zip_code: formData.zipCode,
+        business_hours: formData.businessHours,
+        social_media: formData.socialMedia,
+        address: {
+          street: formData.address,
+          city: formData.city,
+          state: formData.state,
+          postalCode: formData.zipCode,
+          country: formData.country,
+        },
+      };
+      const response = await vendorProfileService.updateVendorStoreProfile(payload);
       console.log('✅ Store profile updated:', response);
 
       const updatedBody = extractStoreProfileBody(response);
@@ -225,6 +244,7 @@ export default function StoreProfilePage() {
       // ownerId is taken from JWT on the catalog service (vendorId || id) when omitted
       const storeDataToSubmit = {
         ...newStoreData,
+        ownerId: user?.vendorId || user?.id,
         isActive: true,
       };
       
@@ -368,6 +388,19 @@ export default function StoreProfilePage() {
                         <Upload className="w-4 h-4" />
                       </button>
                     </div>
+                    {formData.storeLogo && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img
+                          src={formData.storeLogo}
+                          alt="Store logo preview"
+                          className="w-12 h-12 object-cover rounded-lg border border-gray-200"
+                          onLoad={() => setPreviewState(prev => ({ ...prev, logoValid: true }))}
+                          onError={() => setPreviewState(prev => ({ ...prev, logoValid: false }))}
+                        />
+                        {previewState.logoValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                        {previewState.logoValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Store Banner</label>
@@ -383,6 +416,19 @@ export default function StoreProfilePage() {
                         <Upload className="w-4 h-4" />
                       </button>
                     </div>
+                    {formData.storeBanner && (
+                      <div className="mt-2">
+                        <img
+                          src={formData.storeBanner}
+                          alt="Store banner preview"
+                          className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                          onLoad={() => setPreviewState(prev => ({ ...prev, bannerValid: true }))}
+                          onError={() => setPreviewState(prev => ({ ...prev, bannerValid: false }))}
+                        />
+                        {previewState.bannerValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                        {previewState.bannerValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

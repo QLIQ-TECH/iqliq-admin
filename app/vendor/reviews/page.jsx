@@ -43,7 +43,9 @@ const VendorReviewsPage = () => {
       console.log('🔍 Filters:', filters);
       
       // Fetch reviews for products that belong to this vendor only
+      const vendorId = user?.vendorId || user?.id;
       const response = await reviewService.getVendorReviews({
+        vendorId,
         ...filters
       });
       

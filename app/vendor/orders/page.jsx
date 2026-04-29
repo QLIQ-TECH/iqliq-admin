@@ -46,6 +46,20 @@ const VendorOrdersPage = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
 
+  const normalizeOrder = (order) => {
+    const items = Array.isArray(order?.items) ? order.items : [];
+    const vendorItemsTotal = items.reduce((sum, item) => sum + ((Number(item?.price) || 0) * (Number(item?.quantity) || 0)), 0);
+    return {
+      ...order,
+      orderNumber: order?.orderNumber || order?._id?.slice(-8),
+      totalAmount: Number(order?.totalAmount ?? order?.total ?? vendorItemsTotal ?? 0),
+      customer: order?.customer || {
+        name: order?.shippingAddress?.fullName || order?.userId?.name || 'N/A',
+        email: order?.shippingAddress?.email || order?.userId?.email || 'N/A',
+      },
+    };
+  };
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.push('/login');
@@ -77,16 +91,17 @@ const VendorOrdersPage = () => {
         }
       }
       
-      console.log('📦 Processed Orders Data:', ordersData);
-      setOrders(ordersData);
+      const normalizedOrders = ordersData.map(normalizeOrder);
+      console.log('📦 Processed Orders Data:', normalizedOrders);
+      setOrders(normalizedOrders);
       
       // Calculate stats with null checks
-      const total = ordersData.length;
-      const pending = ordersData.filter(o => o && o.status === 'pending').length;
-      const processing = ordersData.filter(o => o && o.status === 'processing').length;
-      const shipped = ordersData.filter(o => o && o.status === 'shipped').length;
-      const delivered = ordersData.filter(o => o && o.status === 'delivered').length;
-      const cancelled = ordersData.filter(o => o && (o.status === 'cancelled' || o.status === 'refunded')).length;
+      const total = normalizedOrders.length;
+      const pending = normalizedOrders.filter(o => o && o.status === 'pending').length;
+      const processing = normalizedOrders.filter(o => o && o.status === 'processing').length;
+      const shipped = normalizedOrders.filter(o => o && o.status === 'shipped').length;
+      const delivered = normalizedOrders.filter(o => o && o.status === 'delivered').length;
+      const cancelled = normalizedOrders.filter(o => o && (o.status === 'cancelled' || o.status === 'refunded')).length;
       
       setStats({ total, pending, processing, shipped, delivered, cancelled });
       
@@ -150,7 +165,7 @@ const VendorOrdersPage = () => {
     { 
       key: 'orderNumber', 
       label: 'Order #',
-      render: (order) => {
+      render: (value, order) => {
         if (!order) return <div className="text-gray-400">N/A</div>;
         return (
           <div className="font-medium text-gray-900">
@@ -162,7 +177,7 @@ const VendorOrdersPage = () => {
     { 
       key: 'customer', 
       label: 'Customer',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <div className="text-gray-400">N/A</div>;
         return (
           <div>
@@ -173,13 +188,13 @@ const VendorOrdersPage = () => {
       }
     },
     { 
-      key: 'total', 
+      key: 'totalAmount', 
       label: 'Total',
-      render: (order) => {
+      render: (value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         return (
           <span className="font-medium text-green-600">
-            ${order.total?.toFixed(2) || order.totalAmount?.toFixed(2) || '0.00'}
+            ${Number(value ?? order.total ?? 0).toFixed(2)}
           </span>
         );
       }
@@ -187,11 +202,11 @@ const VendorOrdersPage = () => {
     { 
       key: 'status', 
       label: 'Status',
-      render: (order) => {
+      render: (value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         return (
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-            {order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || 'Unknown'}
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(value)}`}>
+            {value?.charAt(0).toUpperCase() + value?.slice(1) || 'Unknown'}
           </span>
         );
       }
@@ -199,11 +214,11 @@ const VendorOrdersPage = () => {
     { 
       key: 'createdAt', 
       label: 'Order Date',
-      render: (order) => {
-        if (!order) return <span className="text-gray-400">N/A</span>;
+      render: (value) => {
+        if (!value) return <span className="text-gray-400">N/A</span>;
         return (
           <span className="text-gray-600">
-            {new Date(order.createdAt).toLocaleDateString()}
+            {new Date(value).toLocaleDateString()}
           </span>
         );
       }

@@ -44,7 +44,7 @@ export default function VendorsPage() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      const response = await vendorService.getAllVendors({ status: 'active' });
+      const response = await vendorService.getAllVendors();
       console.log('🔍 [Frontend] fetchVendors response:', response);
       console.log('🔍 [Frontend] vendors data:', response.data);
       
@@ -314,7 +314,7 @@ export default function VendorsPage() {
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
             <StatsCard
-              title="Active Vendors"
+              title="Total Vendors"
               value={stats.total}
               icon={Store}
               color="blue"
