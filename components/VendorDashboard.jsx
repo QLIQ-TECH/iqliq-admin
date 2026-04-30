@@ -253,7 +253,7 @@ const VendorDashboard = () => {
       {/* Global Snapshot Section */}
       <div>
         <h3 className="text-xl font-bold text-gray-900 mb-4">Global Snapshot</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="Sales"
             value="AED 0.0"
@@ -287,7 +287,11 @@ const VendorDashboard = () => {
             trendValue="+1"
           />
         </div>
-        
+      </div>
+
+      {/* Vendor Tools Section */}
+      <div>
+        <h3 className="text-xl font-bold text-gray-900 mb-4">Vendor Tools & Assets</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="My Gigs"

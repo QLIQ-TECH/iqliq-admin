@@ -44,7 +44,11 @@ export default function VendorsPage() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      const response = await vendorService.getAllVendors();
+      // Include all vendors regardless of status to show inactive vendors too
+      const response = await vendorService.getAllVendors({ 
+        includeInactive: true,
+        status: 'all'  
+      });
       console.log('🔍 [Frontend] fetchVendors response:', response);
       console.log('🔍 [Frontend] vendors data:', response.data);
       

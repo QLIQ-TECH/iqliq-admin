@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../contexts/AuthContext';
 import Sidebar from '../../../components/Sidebar';
@@ -26,31 +26,29 @@ export default function VendorAnalyticsPage() {
     performanceMetrics: {}
   });
 
-  // Sample data - fallback when API fails
-  const defaultSalesData = [
-    { name: 'Mon', sales: 1200, visitors: 340 },
-    { name: 'Tue', sales: 1800, visitors: 420 },
-    { name: 'Wed', sales: 1500, visitors: 380 },
-    { name: 'Thu', sales: 2200, visitors: 510 },
-    { name: 'Fri', sales: 2800, visitors: 620 },
-    { name: 'Sat', sales: 3200, visitors: 750 },
-    { name: 'Sun', sales: 2900, visitors: 680 },
-  ];
+  const emptyOverview = {
+    totalRevenue: 0,
+    totalOrders: 0,
+    storeVisitors: 0,
+    conversionRate: 0,
+    averageOrderValue: 0,
+    returnRate: 0,
+    customerSatisfaction: 0,
+    totalProducts: 0,
+    activeProducts: 0,
+    commissionRate: 0
+  };
 
-  const defaultProductPerformance = [
-    { name: 'Product A', sales: 120 },
-    { name: 'Product B', sales: 98 },
-    { name: 'Product C', sales: 86 },
-    { name: 'Product D', sales: 72 },
-    { name: 'Product E', sales: 65 },
-  ];
+  const clearAnalytics = () =>
+    setAnalyticsData({
+      overview: { ...emptyOverview },
+      salesTrend: [],
+      topProducts: [],
+      trafficSources: [],
+      performanceMetrics: {}
+    });
 
-  const defaultTrafficSources = [
-    { name: 'Direct', value: 450 },
-    { name: 'Search', value: 350 },
-    { name: 'Social', value: 200 },
-    { name: 'Referral', value: 150 },
-  ];
+  // No placeholder "demo" numbers — avoid showing marketplace-wide or fake stats
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -59,78 +57,43 @@ export default function VendorAnalyticsPage() {
     }
     if (!isLoading && user?.role !== 'vendor') {
       router.push('/admin');
-      return;
-    }
-    if (user) {
-      fetchAnalytics();
     }
   }, [user, isLoading, router]);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
+    const vendorId = user?.vendorId || user?.id;
+    if (!vendorId) {
+      clearAnalytics();
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      console.log('📊 Fetching analytics for vendor:', user?.vendorId || user?.id, 'period:', dateRange);
-      
-      const response = await analyticsService.getVendorAnalytics(user?.vendorId || user?.id, { period: dateRange });
-      console.log('📊 Analytics Response:', response);
-      
-      const data = response.data || response || {};
+      const response = await analyticsService.getVendorAnalytics(vendorId, { period: dateRange });
+      const data = response?.data || {};
+
       setAnalyticsData({
-        overview: data.overview || {
-          totalRevenue: 13850,
-          totalOrders: 156,
-          storeVisitors: 3780,
-          conversionRate: 4.1,
-          averageOrderValue: 88.78,
-          returnRate: 3.2,
-          customerSatisfaction: 4.6,
-          totalProducts: 45,
-          activeProducts: 38,
-          commissionRate: 12
-        },
-        salesTrend: data.salesTrend || defaultSalesData,
-        topProducts: data.topProducts || defaultProductPerformance,
-        trafficSources: data.trafficSources || defaultTrafficSources,
-        performanceMetrics: data.performanceMetrics || {
-          orderFulfillmentRate: 95.2,
-          onTimeDelivery: 92.8,
-          customerRetentionRate: 78.5,
-          productRating: 4.6,
-          responseTime: '2.3 hours'
-        }
+        overview: { ...emptyOverview, ...(data.overview || {}) },
+        salesTrend: Array.isArray(data.salesTrend) ? data.salesTrend : [],
+        topProducts: Array.isArray(data.topProducts) ? data.topProducts : [],
+        trafficSources: Array.isArray(data.trafficSources) ? data.trafficSources : [],
+        performanceMetrics: data.performanceMetrics && typeof data.performanceMetrics === 'object'
+          ? data.performanceMetrics
+          : {}
       });
-      
     } catch (error) {
       console.error('❌ Error fetching analytics:', error);
-      // Use default data on error
-      setAnalyticsData({
-        overview: {
-          totalRevenue: 13850,
-          totalOrders: 156,
-          storeVisitors: 3780,
-          conversionRate: 4.1,
-          averageOrderValue: 88.78,
-          returnRate: 3.2,
-          customerSatisfaction: 4.6,
-          totalProducts: 45,
-          activeProducts: 38,
-          commissionRate: 12
-        },
-        salesTrend: defaultSalesData,
-        topProducts: defaultProductPerformance,
-        trafficSources: defaultTrafficSources,
-        performanceMetrics: {
-          orderFulfillmentRate: 95.2,
-          onTimeDelivery: 92.8,
-          customerRetentionRate: 78.5,
-          productRating: 4.6,
-          responseTime: '2.3 hours'
-        }
-      });
+      clearAnalytics();
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, dateRange]);
+
+  useEffect(() => {
+    if (isLoading || !user || user.role !== 'vendor') return;
+    fetchAnalytics();
+  }, [user, isLoading, fetchAnalytics]);
 
   if (isLoading || loading) {
     return (
@@ -167,10 +130,7 @@ export default function VendorAnalyticsPage() {
             </div>
             <select
               value={dateRange}
-              onChange={(e) => {
-                setDateRange(e.target.value);
-                fetchAnalytics();
-              }}
+              onChange={(e) => setDateRange(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="week">This Week</option>

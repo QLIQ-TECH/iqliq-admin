@@ -7,7 +7,7 @@ import Sidebar from '../../../components/Sidebar';
 import Header from '../../../components/Header';
 import DataTable from '../../../components/shared/DataTable';
 import StatsCard from '../../../components/shared/StatsCard';
-import { Package, Plus, Edit, Trash2 } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Upload } from 'lucide-react';
 import productService from '../../../lib/services/productService';
 import Modal from '../../../components/shared/Modal';
 
@@ -270,13 +270,22 @@ export default function VendorProductsPage() {
               <h1 className="text-2xl font-bold text-gray-900">My Products</h1>
               <p className="text-gray-600 mt-1">Manage your product catalog</p>
             </div>
-            <button
-              onClick={() => router.push('/vendor/products/add')}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Add Product</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => router.push('/vendor/products/bulk')}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Upload className="w-5 h-5" />
+                <span>Bulk Upload</span>
+              </button>
+              <button
+                onClick={() => router.push('/vendor/products/add')}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Add Product</span>
+              </button>
+            </div>
           </div>
 
           {/* Filters */}

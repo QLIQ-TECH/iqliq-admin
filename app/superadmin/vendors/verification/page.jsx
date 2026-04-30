@@ -400,29 +400,11 @@ export default function VendorVerification() {
                                 setSelectedVendor(vendor);
                                 setShowModal(true);
                               }}
-                              className="text-blue-600 hover:text-blue-900"
-                              title="View Details"
+                              className="bg-blue-100 text-blue-600 hover:bg-blue-200 px-3 py-1 rounded-lg text-sm font-medium transition-colors"
+                              title="View Details & Take Action"
                             >
-                              <Eye className="h-4 w-4" />
+                              Review
                             </button>
-                            {!vendor.verified && (
-                              <>
-                                <button
-                                  onClick={() => handleVerify(vendor.id)}
-                                  className="text-green-600 hover:text-green-900"
-                                  title="Verify"
-                                >
-                                  <CheckCircle className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleReject(vendor.id)}
-                                  className="text-red-600 hover:text-red-900"
-                                  title="Reject"
-                                >
-                                  <XCircle className="h-4 w-4" />
-                                </button>
-                              </>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -495,10 +477,15 @@ export default function VendorVerification() {
                         </div>
                         <button
                           onClick={() => {
-                            setSelectedDocument({ label: 'Business License', url: selectedVendor.documents.businessLicense });
+                            console.log('Viewing Business License:', selectedVendor.documents.businessLicense);
+                            setSelectedDocument({ 
+                              label: 'Business License', 
+                              url: selectedVendor.documents.businessLicense 
+                            });
                             setShowDocumentModal(true);
                           }}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                          disabled={!selectedVendor.documents.businessLicense}
                         >
                           View
                         </button>
@@ -512,10 +499,15 @@ export default function VendorVerification() {
                         </div>
                         <button
                           onClick={() => {
-                            setSelectedDocument({ label: 'Tax ID', url: selectedVendor.documents.taxId });
+                            console.log('Viewing Tax ID:', selectedVendor.documents.taxId);
+                            setSelectedDocument({ 
+                              label: 'Tax ID', 
+                              url: selectedVendor.documents.taxId 
+                            });
                             setShowDocumentModal(true);
                           }}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                          disabled={!selectedVendor.documents.taxId}
                         >
                           View
                         </button>
@@ -529,10 +521,15 @@ export default function VendorVerification() {
                         </div>
                         <button
                           onClick={() => {
-                            setSelectedDocument({ label: 'Bank Account', url: selectedVendor.documents.bankAccount });
+                            console.log('Viewing Bank Account:', selectedVendor.documents.bankAccount);
+                            setSelectedDocument({ 
+                              label: 'Bank Account', 
+                              url: selectedVendor.documents.bankAccount 
+                            });
                             setShowDocumentModal(true);
                           }}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                          disabled={!selectedVendor.documents.bankAccount}
                         >
                           View
                         </button>
@@ -593,18 +590,48 @@ export default function VendorVerification() {
             </div>
             {selectedDocument?.url ? (
               <div className="space-y-3">
-                <p className="text-sm text-gray-700 break-all">{selectedDocument.url}</p>
-                <a
-                  href={selectedDocument.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Open Document
-                </a>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-500 mb-1">Document URL:</p>
+                  <p className="text-sm text-gray-700 break-all font-mono">{selectedDocument.url}</p>
+                </div>
+                <div className="flex gap-3">
+                  <a
+                    href={selectedDocument.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    onClick={(e) => {
+                      console.log('Opening document:', selectedDocument.url);
+                      // Add a small delay to check if the URL is valid
+                      try {
+                        const url = new URL(selectedDocument.url);
+                        console.log('Valid URL detected:', url.href);
+                      } catch (error) {
+                        console.error('Invalid URL:', selectedDocument.url, error);
+                        e.preventDefault();
+                        alert('Invalid document URL. Please contact support.');
+                      }
+                    }}
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Open Document
+                  </a>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedDocument.url);
+                      console.log('URL copied to clipboard');
+                    }}
+                    className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Copy URL
+                  </button>
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-600">No documents uploaded.</p>
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-600">No documents uploaded for this item.</p>
+              </div>
             )}
           </div>
         </div>

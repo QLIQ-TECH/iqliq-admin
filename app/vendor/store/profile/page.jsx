@@ -23,6 +23,20 @@ const DEFAULT_BUSINESS_HOURS = {
 
 const DEFAULT_SOCIAL = { facebook: '', twitter: '', instagram: '', linkedin: '' };
 
+// Helper function to safely render any value as a string
+const safeRender = (value, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[Object]';
+    }
+  }
+  return String(value);
+};
+
 /** Unwrap vendor API payloads (camelCase or snake_case, optional nesting). */
 function extractStoreProfileBody(res) {
   if (!res || typeof res !== 'object') return null;
@@ -86,7 +100,25 @@ export default function StoreProfilePage() {
   const [stores, setStores] = useState([]);
   const [storesLoading, setStoresLoading] = useState(false);
   const [showCreateStoreModal, setShowCreateStoreModal] = useState(false);
+  const [showEditStoreModal, setShowEditStoreModal] = useState(false);
+  const [editingStoreId, setEditingStoreId] = useState(null);
+  const [isUpdatingStore, setIsUpdatingStore] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
+  const [editStoreData, setEditStoreData] = useState({
+    name: '',
+    description: '',
+    logo: '',
+    banner: '',
+    email: '',
+    phone: '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      country: '',
+      postalCode: ''
+    }
+  });
   const [newStoreData, setNewStoreData] = useState({
     name: '',
     description: '',
@@ -235,6 +267,107 @@ export default function StoreProfilePage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const mapStoreToEditForm = (store) => {
+    const addr =
+      store?.address && typeof store.address === 'object' && !Array.isArray(store.address)
+        ? store.address
+        : {};
+    return {
+      name: store?.name ?? '',
+      description: store?.description ?? '',
+      logo: store?.logo ?? '',
+      banner: store?.banner ?? '',
+      email: store?.email ?? '',
+      phone: store?.phone ?? '',
+      address: {
+        street:
+          addr.street ??
+          (typeof store?.address === 'string' ? store.address : '') ??
+          '',
+        city: addr.city ?? '',
+        state: addr.state ?? '',
+        country: addr.country ?? '',
+        postalCode: addr.postalCode ?? ''
+      }
+    };
+  };
+
+  const openEditStoreModal = (store) => {
+    const id = store?._id || store?.id;
+    if (!id) {
+      alert('Cannot edit: missing store id.');
+      return;
+    }
+    setEditingStoreId(String(id));
+    setEditStoreData(mapStoreToEditForm(store));
+    setShowEditStoreModal(true);
+  };
+
+  const handleEditStoreInputChange = (e) => {
+    const { name, value } = e.target;
+    if (name.startsWith('address.')) {
+      const addressField = name.split('.')[1];
+      setEditStoreData((prev) => ({
+        ...prev,
+        address: {
+          ...prev.address,
+          [addressField]: value
+        }
+      }));
+    } else {
+      setEditStoreData((prev) => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+  };
+
+  const handleUpdateStore = async () => {
+    if (!editingStoreId || !editStoreData.name?.trim()) {
+      alert('Store name is required.');
+      return;
+    }
+    try {
+      setIsUpdatingStore(true);
+      const payload = {
+        name: editStoreData.name.trim(),
+        description: editStoreData.description,
+        logo: editStoreData.logo || undefined,
+        banner: editStoreData.banner || undefined,
+        email: editStoreData.email || undefined,
+        phone: editStoreData.phone || undefined,
+        address: {
+          street: editStoreData.address.street,
+          city: editStoreData.address.city,
+          state: editStoreData.address.state,
+          country: editStoreData.address.country,
+          postalCode: editStoreData.address.postalCode
+        }
+      };
+      await storeService.updateStore(editingStoreId, payload);
+      await fetchVendorStores();
+      setShowEditStoreModal(false);
+      setEditingStoreId(null);
+      alert('Store updated successfully!');
+    } catch (error) {
+      console.error('Error updating store:', error);
+      alert('Failed to update store: ' + (error.response?.data?.message || error.message || 'Unknown error'));
+    } finally {
+      setIsUpdatingStore(false);
+    }
+  };
+
+  const openStorefrontInNewTab = (store) => {
+    const slug = store?.slug;
+    if (!slug) {
+      alert('This store has no public URL (slug) yet. Try saving the store name again or contact support.');
+      return;
+    }
+    const base = (process.env.NEXT_PUBLIC_FRONTEND_APP_URL || '').replace(/\/$/, '');
+    const url = base ? `${base}/${encodeURIComponent(slug)}` : `/${encodeURIComponent(slug)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleCreateStore = async () => {
@@ -560,7 +693,7 @@ export default function StoreProfilePage() {
                           store.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {store.status}
+                          {String(store.status || 'unknown')}
                         </span>
                       </div>
                     </div>
@@ -581,11 +714,15 @@ export default function StoreProfilePage() {
                             </div>
                           )}
                           <div>
-                            <h3 className="font-semibold text-gray-900">{store.name}</h3>
+                            <h3 className="font-semibold text-gray-900">{String(store.name || 'Unnamed Store')}</h3>
                             <div className="flex items-center space-x-1">
                               <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                              <span className="text-sm text-gray-600">{store.rating}</span>
-                              <span className="text-sm text-gray-500">({store.reviewCount} reviews)</span>
+                              <span className="text-sm text-gray-600">
+                                {typeof store.rating === 'number' ? store.rating.toFixed(1) : store.rating || '0.0'}
+                              </span>
+                              <span className="text-sm text-gray-500">
+                                ({typeof store.reviewCount === 'number' ? store.reviewCount : store.reviewCount || 0} reviews)
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -597,28 +734,34 @@ export default function StoreProfilePage() {
                         )}
                       </div>
 
-                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">{store.description}</p>
+                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">{String(store.description || 'No description available')}</p>
 
                       {/* Store Stats */}
                       <div className="grid grid-cols-3 gap-4 mb-4">
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <ShoppingBag className="w-4 h-4" />
-                            <span className="text-sm font-medium">{store.totalProducts}</span>
+                            <span className="text-sm font-medium">
+                              {typeof store.totalProducts === 'number' ? store.totalProducts : store.totalProducts || 0}
+                            </span>
                           </div>
                           <p className="text-xs text-gray-500">Products</p>
                         </div>
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <Store className="w-4 h-4" />
-                            <span className="text-sm font-medium">{store.totalOrders}</span>
+                            <span className="text-sm font-medium">
+                              {typeof store.totalOrders === 'number' ? store.totalOrders : store.totalOrders || 0}
+                            </span>
                           </div>
                           <p className="text-xs text-gray-500">Orders</p>
                         </div>
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <DollarSign className="w-4 h-4" />
-                            <span className="text-sm font-medium">${store.totalRevenue?.toLocaleString()}</span>
+                            <span className="text-sm font-medium">
+                              ${typeof store.totalRevenue === 'number' ? store.totalRevenue.toLocaleString() : store.totalRevenue || 0}
+                            </span>
                           </div>
                           <p className="text-xs text-gray-500">Revenue</p>
                         </div>
@@ -629,30 +772,45 @@ export default function StoreProfilePage() {
                         {store.address && (
                           <div className="flex items-center space-x-2 text-sm text-gray-600">
                             <MapPin className="w-4 h-4" />
-                            <span className="truncate">{store.address}</span>
+                            <span className="truncate">
+                              {typeof store.address === 'string' 
+                                ? store.address 
+                                : typeof store.address === 'object' 
+                                  ? `${store.address.street || ''}, ${store.address.city || ''}, ${store.address.state || ''}`.replace(/^,\s*|,\s*$/g, '').replace(/,\s*,/g, ',')
+                                  : store.address || ''
+                              }
+                            </span>
                           </div>
                         )}
                         {store.phone && (
                           <div className="flex items-center space-x-2 text-sm text-gray-600">
                             <Phone className="w-4 h-4" />
-                            <span>{store.phone}</span>
+                            <span>{String(store.phone || '')}</span>
                           </div>
                         )}
                         {store.email && (
                           <div className="flex items-center space-x-2 text-sm text-gray-600">
                             <Mail className="w-4 h-4" />
-                            <span className="truncate">{store.email}</span>
+                            <span className="truncate">{String(store.email || '')}</span>
                           </div>
                         )}
                       </div>
 
                       {/* Action Buttons */}
                       <div className="flex space-x-2">
-                        <button className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                        <button
+                          type="button"
+                          onClick={() => openStorefrontInNewTab(store)}
+                          className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                        >
                           <Eye className="w-4 h-4" />
                           <span className="text-sm">View</span>
                         </button>
-                        <button className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200">
+                        <button
+                          type="button"
+                          onClick={() => openEditStoreModal(store)}
+                          className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+                        >
                           <Edit className="w-4 h-4" />
                           <span className="text-sm">Edit</span>
                         </button>
@@ -665,6 +823,184 @@ export default function StoreProfilePage() {
           </div>
         </main>
       </div>
+
+      {/* Edit Store Modal */}
+      {showEditStoreModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Edit Store</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditStoreModal(false);
+                    setEditingStoreId(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleUpdateStore();
+                }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={editStoreData.name}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      name="description"
+                      value={editStoreData.description}
+                      onChange={handleEditStoreInputChange}
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Logo URL</label>
+                    <input
+                      type="url"
+                      name="logo"
+                      value={editStoreData.logo}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Banner URL</label>
+                    <input
+                      type="url"
+                      name="banner"
+                      value={editStoreData.banner}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={editStoreData.email}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={editStoreData.phone}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Address</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <input
+                          type="text"
+                          name="address.street"
+                          value={editStoreData.address.street}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Street"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.city"
+                          value={editStoreData.address.city}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="City"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.state"
+                          value={editStoreData.address.state}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="State"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.country"
+                          value={editStoreData.address.country}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Country"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.postalCode"
+                          value={editStoreData.address.postalCode}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Postal code"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditStoreModal(false);
+                      setEditingStoreId(null);
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUpdatingStore || !editStoreData.name?.trim()}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isUpdatingStore ? 'Saving...' : 'Save changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Store Modal */}
       {showCreateStoreModal && (

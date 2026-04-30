@@ -16,12 +16,12 @@ export default function Home() {
       return;
     }
 
-    if (user.role === 'vendor' && user.onboardingCompleted === false) {
+    if (user.role === 'vendor' && user.onboardingCompleted === false && !user.vendorId) {
       router.replace('/onboarding/virtual-assitance');
       return;
     }
     if (user.role === 'superadmin') {
-      router.replace('/admin');
+      router.replace('/superadmin/user');
     } else if (user.role === 'vendor') {
       router.replace('/vendor');
     }

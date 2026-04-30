@@ -106,6 +106,28 @@ const VendorReviewsPage = () => {
     });
   };
 
+  const handleReviewLike = async (reviewId) => {
+    try {
+      console.log('Liking review:', reviewId);
+      // Note: This would need a proper API endpoint for liking reviews
+      // For now, we'll just log the action
+      console.log('Review liked successfully');
+    } catch (error) {
+      console.error('Error liking review:', error);
+    }
+  };
+
+  const handleReviewDislike = async (reviewId) => {
+    try {
+      console.log('Disliking review:', reviewId);
+      // Note: This would need a proper API endpoint for disliking reviews
+      // For now, we'll just log the action
+      console.log('Review disliked successfully');
+    } catch (error) {
+      console.error('Error disliking review:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -315,11 +337,19 @@ const VendorReviewsPage = () => {
 
                       <div className="flex items-center space-x-4">
                         <div className="flex items-center space-x-2">
-                          <button className="flex items-center space-x-1 text-gray-600 hover:text-blue-600">
+                          <button 
+                            onClick={() => handleReviewLike(review._id || review.id)}
+                            className="flex items-center space-x-1 text-gray-600 hover:text-blue-600 transition-colors"
+                            title="Like this review"
+                          >
                             <ThumbsUp className="w-4 h-4" />
                             <span className="text-sm">{review.likes || 0}</span>
                           </button>
-                          <button className="flex items-center space-x-1 text-gray-600 hover:text-red-600">
+                          <button 
+                            onClick={() => handleReviewDislike(review._id || review.id)}
+                            className="flex items-center space-x-1 text-gray-600 hover:text-red-600 transition-colors"
+                            title="Dislike this review"
+                          >
                             <ThumbsDown className="w-4 h-4" />
                             <span className="text-sm">{review.dislikes || 0}</span>
                           </button>

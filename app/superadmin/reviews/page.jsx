@@ -260,20 +260,51 @@ const ReviewsPage = () => {
     }
   };
 
-  const handleReviewAction = async (reviewId, action) => {
+  const handleReviewAction = async (reviewId, action, reviewType = 'product') => {
     try {
+      console.log(`Attempting to ${action} ${reviewType} review:`, reviewId);
+      
+      const statusUpdate = { 
+        status: action === 'approve' ? 'approved' : 'rejected' 
+      };
+      
       let response;
-      if (action === 'approve') {
-        response = await reviewService.updateProductReview(reviewId, { status: 'approved' });
-      } else if (action === 'reject') {
-        response = await reviewService.updateProductReview(reviewId, { status: 'rejected' });
+      if (reviewType === 'store') {
+        if (action === 'approve') {
+          response = await reviewService.updateStoreReview(reviewId, statusUpdate);
+        } else if (action === 'reject') {
+          response = await reviewService.updateStoreReview(reviewId, statusUpdate);
+        }
+      } else {
+        // Default to product review
+        if (action === 'approve') {
+          response = await reviewService.updateProductReview(reviewId, statusUpdate);
+        } else if (action === 'reject') {
+          response = await reviewService.updateProductReview(reviewId, statusUpdate);
+        }
       }
       
-      if (response.success) {
-        fetchData(); // Refresh data
+      if (!response) {
+        console.error('Invalid action:', action);
+        return;
+      }
+      
+      console.log(`Review ${action} response:`, response);
+      
+      if (response && (response.success || response.status === 'success' || response.data)) {
+        console.log(`${reviewType} review ${action}ed successfully`);
+        await fetchData(); // Refresh data
+      } else {
+        console.error(`Failed to ${action} ${reviewType} review:`, response);
       }
     } catch (error) {
-      console.error(`Error ${action}ing review:`, error);
+      console.error(`Error ${action}ing ${reviewType} review:`, error);
+      
+      // Try the other review type as fallback
+      if (reviewType === 'product') {
+        console.log('Retrying as store review...');
+        return handleReviewAction(reviewId, action, 'store');
+      }
     }
   };
 
@@ -575,15 +606,23 @@ const ReviewsPage = () => {
                           {review.status === 'pending' && (
                             <>
                               <button
-                                onClick={() => handleReviewAction(review._id, 'approve')}
-                                className="text-green-600 hover:text-green-900"
+                                onClick={() => handleReviewAction(
+                                  review._id, 
+                                  'approve', 
+                                  review.storeId && !review.productId ? 'store' : 'product'
+                                )}
+                                className="text-green-600 hover:text-green-900 transition-colors"
                                 title="Approve"
                               >
                                 <ThumbsUp className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleReviewAction(review._id, 'reject')}
-                                className="text-red-600 hover:text-red-900"
+                                onClick={() => handleReviewAction(
+                                  review._id, 
+                                  'reject', 
+                                  review.storeId && !review.productId ? 'store' : 'product'
+                                )}
+                                className="text-red-600 hover:text-red-900 transition-colors"
                                 title="Reject"
                               >
                                 <ThumbsDown className="w-4 h-4" />

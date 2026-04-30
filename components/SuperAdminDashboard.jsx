@@ -462,7 +462,7 @@ const SuperAdminDashboard = () => {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="Total Revenue"
             value={formatMetricValue(metrics?.revenue?.total, 'currency') || 'Loading...'}
@@ -500,7 +500,11 @@ const SuperAdminDashboard = () => {
             loading={loading}
           />
         </div>
-        
+      </div>
+
+      {/* User Management Section */}
+      <div>
+        <h3 className="text-xl font-bold text-gray-900 mb-4">User Management</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="New Users"

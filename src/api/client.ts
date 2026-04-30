@@ -4,7 +4,20 @@ import axios, {  AxiosError,type AxiosInstance,type AxiosRequestConfig,type Axio
 export const GigsBaseURL = process.env.NEXT_PUBLIC_GIGS_SERVICE_URL;
 export const PostsBaseURL = process.env.NEXT_PUBLIC_POSTS_SERVICE_URL;
 export const OnboardingBaseURL = process.env.NEXT_PUBLIC_ONBOARDING_SERVICE_URL;
-export const AuthBaseURL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
+
+const normalizeAuthServiceUrl = () => {
+  const explicitServiceUrl = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
+  if (explicitServiceUrl) return explicitServiceUrl;
+
+  const authApiUrl = process.env.NEXT_PUBLIC_AUTH_API_URL;
+  if (!authApiUrl) return undefined;
+
+  // Convert ".../api/auth" style URL to service root so route paths
+  // like "/api/auth/login" are not duplicated.
+  return authApiUrl.replace(/\/api\/auth\/?$/, '');
+};
+
+export const AuthBaseURL = normalizeAuthServiceUrl();
 export const AmpBaseURL = process.env.NEXT_PUBLIC_AMP_SERVICE_URL;
 export const MessageBaseUrl = process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL;
 

@@ -134,7 +134,11 @@ export const AuthProvider = ({ children }) => {
       }
 
       const response = await withTimeout(authApi.get('/profile'), 4000);
-      const userData = response.user;
+      const userData = response.user || response.data || response;
+      
+      if (!userData || !userData.email) {
+        throw new Error('Invalid user data received from profile endpoint');
+      }
       
       // Map backend roles to frontend roles
       let frontendRole = 'vendor'; // default
@@ -154,7 +158,7 @@ export const AuthProvider = ({ children }) => {
         phone: userData.phone,
         cognitoUserId: userData.cognitoUserId,
         vendorId: userData.vendorId || normalizedUserId, // Add vendorId field
-        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? true,
+        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? (userData.vendorId ? true : false),
       };
       
       setUser(frontendUserData);
@@ -211,12 +215,23 @@ export const AuthProvider = ({ children }) => {
         roles: ['vendor', 'brand', 'admin', 'manager', 'super_admin'],
       });
 
-      const userData = res?.data?.user;
-      const tokenData = res?.data?.tokens;
-      const accessToken = tokenData?.accessToken || null;
-      const refreshToken = tokenData?.refreshToken || null;
+      // Support multiple response shapes from different auth deployments:
+      // { user, tokens } OR { data: { user, tokens } } OR { data: { data: { user, tokens } } }
+      const payload =
+        (res?.user && res) ||
+        (res?.data?.user && res.data) ||
+        (res?.data?.data?.user && res.data.data) ||
+        res;
+
+      const userData = payload?.user || payload?.data?.user || null;
+      const tokenData = payload?.tokens || payload?.data?.tokens || null;
+      const accessToken =
+        tokenData?.accessToken || tokenData?.access_token || payload?.accessToken || null;
+      const refreshToken =
+        tokenData?.refreshToken || tokenData?.refresh_token || payload?.refreshToken || null;
 
       if (!userData || !accessToken) {
+        console.error('Unexpected login response shape:', res);
         throw new Error('Login failed: tokens missing from response');
       }
 
@@ -233,7 +248,7 @@ export const AuthProvider = ({ children }) => {
       const onboardingCompleted =
         typeof userData.onboardingCompleted === 'boolean'
           ? userData.onboardingCompleted
-          : false;
+          : userData.vendorId ? true : false; // If vendor has vendorId, consider onboarding complete
 
       const frontendUserData = {
         id: normalizedUserId,

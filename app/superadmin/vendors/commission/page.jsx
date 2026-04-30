@@ -131,26 +131,42 @@ export default function CommissionSettings() {
       return;
     }
 
+    // Validate commission rate
+    const rate = parseFloat(newCommissionRate);
+    if (isNaN(rate) || rate < 0 || rate > 100) {
+      alert('Please enter a valid commission rate between 0 and 100');
+      return;
+    }
+
     try {
-      console.log('🔄 Updating commission for vendor:', vendorId, 'to rate:', newCommissionRate);
-      const response = await commissionService.updateVendorCommission(vendorId, newCommissionRate);
-      if (response.success) {
+      console.log('🔄 Updating commission for vendor:', vendorId, 'to rate:', rate);
+      const response = await commissionService.updateVendorCommission(vendorId, rate);
+      
+      console.log('💡 Commission update response:', response);
+      
+      if (response && (response.success || response.data)) {
         // Update local state
         setVendors(prev => 
           prev.map(vendor => {
             const normalizedVendorId = vendor.id || vendor._id || vendor.vendorId;
             return normalizedVendorId === vendorId
-              ? { ...vendor, commissionRate: newCommissionRate, hasCustomCommission: true }
+              ? { ...vendor, commissionRate: rate, hasCustomCommission: true }
               : vendor;
           })
         );
-        alert('Vendor commission updated successfully!');
+        console.log('✅ Vendor commission updated successfully!');
+        // Use a less intrusive notification
+        const notification = document.createElement('div');
+        notification.innerHTML = '✅ Commission updated successfully!';
+        notification.className = 'fixed top-4 right-4 bg-green-100 text-green-800 px-4 py-2 rounded-lg shadow-lg z-50';
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
       } else {
-        alert('Error updating vendor commission: ' + response.message);
+        throw new Error(response?.message || 'Unknown error occurred');
       }
     } catch (error) {
-      console.error('Error updating vendor commission:', error);
-      alert('Error updating vendor commission: ' + error.message);
+      console.error('❌ Error updating vendor commission:', error);
+      alert('Error updating vendor commission: ' + (error.message || 'Network or server error'));
     }
   };
 
@@ -487,18 +503,26 @@ export default function CommissionSettings() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               {vendor.verified ? (
-                                <>
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="number"
-                                    value={vendor.commissionRate || 10}
-                                    onChange={(e) => {
+                                    defaultValue={vendor.commissionRate || 10}
+                                    onBlur={(e) => {
                                       const vendorId = vendor.id || vendor._id || vendor.vendorId;
                                       if (!vendorId) {
                                         console.error('❌ Vendor ID is missing:', vendor);
                                         alert('Error: Vendor ID is missing. Please refresh the page.');
                                         return;
                                       }
-                                      handleVendorCommissionUpdate(vendorId, parseFloat(e.target.value));
+                                      const newValue = parseFloat(e.target.value);
+                                      if (newValue !== (vendor.commissionRate || 10)) {
+                                        handleVendorCommissionUpdate(vendorId, newValue);
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.target.blur(); // Trigger the onBlur event
+                                      }
                                     }}
                                     className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     min="0"
@@ -509,7 +533,14 @@ export default function CommissionSettings() {
                                   {vendor.hasCustomCommission && (
                                     <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Custom</span>
                                   )}
-                                </>
+                                  <button
+                                    onClick={() => openCommissionModal(vendor)}
+                                    className="text-blue-600 hover:text-blue-800 text-xs"
+                                    title="Edit Commission"
+                                  >
+                                    Edit
+                                  </button>
+                                </div>
                               ) : (
                                 <span className="text-sm text-gray-400 italic">Verify first</span>
                               )}
