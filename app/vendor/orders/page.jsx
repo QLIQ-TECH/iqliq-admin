@@ -19,6 +19,11 @@ import {
   Edit,
   Filter
 } from 'lucide-react';
+import {
+  extractOrdersListFromApiResponse,
+  isVendorFulfillmentPendingStatus,
+  normalizeOrderStatus,
+} from '../../../lib/utils/vendorOrderUtils';
 
 const VendorOrdersPage = () => {
   const { user, isLoading } = useAuth();
@@ -49,8 +54,10 @@ const VendorOrdersPage = () => {
   const normalizeOrder = (order) => {
     const items = Array.isArray(order?.items) ? order.items : [];
     const vendorItemsTotal = items.reduce((sum, item) => sum + ((Number(item?.price) || 0) * (Number(item?.quantity) || 0)), 0);
+    const status = normalizeOrderStatus(order);
     return {
       ...order,
+      status,
       orderNumber: order?.orderNumber || order?._id?.slice(-8),
       totalAmount: Number(order?.totalAmount ?? order?.total ?? vendorItemsTotal ?? 0),
       customer: order?.customer || {
@@ -76,28 +83,20 @@ const VendorOrdersPage = () => {
       setLoading(true);
       console.log('🔍 Fetching orders for vendor:', user?.vendorId || user?.id);
       
-      const response = await orderService.getVendorOrders(user?.vendorId || user?.id);
+      const response = await orderService.getVendorOrders(user?.vendorId || user?.id, {
+        page: 1,
+        limit: 100,
+      });
       console.log('📊 Orders Response:', response);
       
-      // Handle different response structures
-      let ordersData = [];
-      if (Array.isArray(response)) {
-        ordersData = response;
-      } else if (response?.data) {
-        if (Array.isArray(response.data)) {
-          ordersData = response.data;
-        } else if (response.data.orders && Array.isArray(response.data.orders)) {
-          ordersData = response.data.orders;
-        }
-      }
-      
-      const normalizedOrders = ordersData.map(normalizeOrder);
+      const ordersDataRaw = extractOrdersListFromApiResponse(response);
+      const normalizedOrders = ordersDataRaw.map(normalizeOrder);
       console.log('📦 Processed Orders Data:', normalizedOrders);
       setOrders(normalizedOrders);
       
       // Calculate stats with null checks
       const total = normalizedOrders.length;
-      const pending = normalizedOrders.filter(o => o && o.status === 'pending').length;
+      const pending = normalizedOrders.filter((o) => o && isVendorFulfillmentPendingStatus(o.status)).length;
       const processing = normalizedOrders.filter(o => o && o.status === 'processing').length;
       const shipped = normalizedOrders.filter(o => o && o.status === 'shipped').length;
       const delivered = normalizedOrders.filter(o => o && o.status === 'delivered').length;
@@ -134,7 +133,11 @@ const VendorOrdersPage = () => {
     
     // Filter by status
     if (filters.status !== 'all') {
-      filtered = filtered.filter(order => order.status === filters.status);
+      if (filters.status === 'pending') {
+        filtered = filtered.filter((order) => isVendorFulfillmentPendingStatus(order.status));
+      } else {
+        filtered = filtered.filter((order) => order.status === filters.status);
+      }
     }
     
     // Filter by search
@@ -152,6 +155,7 @@ const VendorOrdersPage = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'pending': return 'text-yellow-600 bg-yellow-100';
+      case 'accepted': return 'text-amber-600 bg-amber-100';
       case 'processing': return 'text-blue-600 bg-blue-100';
       case 'shipped': return 'text-purple-600 bg-purple-100';
       case 'delivered': return 'text-green-600 bg-green-100';
@@ -307,7 +311,7 @@ const VendorOrdersPage = () => {
                 color="blue"
               />
               <StatsCard
-                title="Pending"
+                title="To fulfill"
                 value={stats.pending}
                 icon={Clock}
                 color="yellow"
@@ -366,7 +370,7 @@ const VendorOrdersPage = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="all">All Status</option>
-                    <option value="pending">Pending</option>
+                    <option value="pending">To fulfill</option>
                     <option value="confirmed">Confirmed</option>
                     <option value="shipped">Shipped</option>
                     <option value="delivered">Delivered</option>
@@ -426,7 +430,7 @@ const VendorOrdersPage = () => {
                       onChange={(e) => setNewStatus(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
-                      <option value="pending">Pending</option>
+                      <option value="pending">To fulfill</option>
                       <option value="confirmed">Confirmed</option>
                       <option value="shipped">Shipped</option>
                       <option value="delivered">Delivered</option>

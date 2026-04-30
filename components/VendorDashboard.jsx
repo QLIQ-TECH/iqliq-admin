@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import MetricCard from './MetricCard';
 import CreateGigDrawer from './createGig/CreateGigDrawer';
 import { useAuth } from '../contexts/AuthContext';
 import productService from '../lib/services/productService';
+import orderService from '../lib/services/orderService';
+import { extractOrdersListFromApiResponse, normalizeOrderStatus } from '../lib/utils/vendorOrderUtils';
 import { 
   ShoppingBag, 
   DollarSign, 
@@ -16,14 +19,19 @@ import {
 
 const VendorDashboard = () => {
   const { user } = useAuth();
+  const router = useRouter();
   const [isCreateGigDrawerOpen, setIsCreateGigDrawerOpen] = useState(false);
   const [products, setProducts] = useState([]);
   const [isProductsLoading, setIsProductsLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
+  const vendorKey = user?.vendorId || user?.id;
 
   useEffect(() => {
     const fetchVendorProducts = async () => {
-      if (!user?.id) {
+      if (!vendorKey) {
         setProducts([]);
         setIsProductsLoading(false);
         return;
@@ -31,8 +39,7 @@ const VendorDashboard = () => {
       try {
         setIsProductsLoading(true);
         const response = await productService.getAllProducts({
-          vendor_id: user.id,
-          vendorId: user.id,
+          vendor_id: vendorKey,
           approval_status: 'all',
           limit: 200,
         });
@@ -49,7 +56,44 @@ const VendorDashboard = () => {
     };
 
     fetchVendorProducts();
-  }, [user?.id]);
+  }, [vendorKey]);
+
+  useEffect(() => {
+    const loadRecent = async () => {
+      if (!vendorKey) {
+        setRecentOrders([]);
+        return;
+      }
+      try {
+        setOrdersLoading(true);
+        const res = await orderService.getVendorOrders(vendorKey, { page: 1, limit: 8 });
+        const list = extractOrdersListFromApiResponse(res);
+        setRecentOrders(Array.isArray(list) ? list.slice(0, 5) : []);
+      } catch (e) {
+        console.error('Error loading recent orders:', e);
+        setRecentOrders([]);
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+    loadRecent();
+  }, [vendorKey]);
+
+  const recentOrderStatusColor = (status) => {
+    const s = normalizeOrderStatus({ status });
+    if (s === 'delivered') return 'bg-green-500';
+    if (s === 'shipped') return 'bg-blue-500';
+    if (s === 'cancelled' || s === 'refunded') return 'bg-red-500';
+    if (s === 'processing' || s === 'accepted') return 'bg-yellow-500';
+    return 'bg-amber-500';
+  };
+
+  const formatRecentOrderTotal = (order) => {
+    const cur = order?.currency || 'USD';
+    const sym = cur === 'AED' ? 'AED ' : cur === 'EUR' ? '€' : '$';
+    const n = Number(order?.totalAmount ?? order?.total ?? 0);
+    return `${sym}${n.toFixed(2)}`;
+  };
 
   const getMappedStatus = (product) => {
     const approval = String(product?.approval_status || '').toLowerCase();
@@ -330,62 +374,63 @@ const VendorDashboard = () => {
 
       {/* Recent Orders */}
       <div>
-        <h3 className="text-xl font-bold text-gray-900 mb-4">Recent Orders</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-900">Recent Orders</h3>
+          <button
+            type="button"
+            onClick={() => router.push('/vendor/orders')}
+            className="text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            View all
+          </button>
+        </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12345</span>
-                  <p className="text-xs text-gray-500">Customer: John Doe</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 150.00</span>
-                <p className="text-xs text-gray-500">Completed</p>
-              </div>
+          {ordersLoading ? (
+            <div className="animate-pulse space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 bg-gray-100 rounded" />
+              ))}
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12344</span>
-                  <p className="text-xs text-gray-500">Customer: Jane Smith</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 89.50</span>
-                <p className="text-xs text-gray-500">Processing</p>
-              </div>
+          ) : recentOrders.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No orders yet. When customers buy your products, they will appear here.</p>
+          ) : (
+            <div className="space-y-4">
+              {recentOrders.map((order) => {
+                const id = order._id || order.id;
+                const label = order.orderNumber || (id ? String(id).slice(-8) : '—');
+                const customer = order.customer?.name
+                  || order.shippingAddress?.fullName
+                  || 'Customer';
+                const status = normalizeOrderStatus(order);
+                return (
+                  <button
+                    key={id || label}
+                    type="button"
+                    onClick={() => id && router.push(`/vendor/orders/${id}`)}
+                    className="w-full flex items-center justify-between py-3 border-b border-gray-100 last:border-0 text-left hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${recentOrderStatusColor(status)}`} />
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-gray-900 block truncate">
+                          Order #{label}
+                        </span>
+                        <p className="text-xs text-gray-500 truncate">
+                          {customer}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <span className="text-sm font-medium text-gray-900 block">
+                        {formatRecentOrderTotal(order)}
+                      </span>
+                      <p className="text-xs text-gray-500 capitalize">{status}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12343</span>
-                  <p className="text-xs text-gray-500">Customer: Mike Johnson</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 245.00</span>
-                <p className="text-xs text-gray-500">Shipped</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-3">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12342</span>
-                  <p className="text-xs text-gray-500">Customer: Sarah Wilson</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 75.00</span>
-                <p className="text-xs text-gray-500">Cancelled</p>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

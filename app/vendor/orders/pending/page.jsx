@@ -16,6 +16,7 @@ import {
   Eye,
   Edit
 } from 'lucide-react';
+import { extractOrdersListFromApiResponse } from '../../../../lib/utils/vendorOrderUtils';
 
 const PendingOrdersPage = () => {
   const { user, isLoading } = useAuth();
@@ -54,18 +55,17 @@ const PendingOrdersPage = () => {
       const response = await orderService.getVendorPendingOrders(user?.vendorId || user?.id);
       console.log('📊 Pending Orders Response:', response);
       
-      const ordersData = response.data?.orders || response.data || response || [];
-      const filteredPending = ordersData.filter(order => order.status === 'pending');
-      setPendingOrders(filteredPending);
+      const ordersData = extractOrdersListFromApiResponse(response);
+      setPendingOrders(ordersData);
       
       // Calculate stats
-      const total = filteredPending.length;
-      const urgent = filteredPending.filter(o => {
+      const total = ordersData.length;
+      const urgent = ordersData.filter((o) => {
         const orderDate = new Date(o.createdAt);
         const daysDiff = (new Date() - orderDate) / (1000 * 60 * 60 * 24);
         return daysDiff >= 2; // Orders older than 2 days are urgent
       }).length;
-      const today = filteredPending.filter(o => {
+      const today = ordersData.filter((o) => {
         const orderDate = new Date(o.createdAt);
         const today = new Date();
         return orderDate.toDateString() === today.toDateString();
@@ -271,7 +271,9 @@ const PendingOrdersPage = () => {
             {/* Header */}
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-900">Pending Orders</h1>
-              <p className="text-gray-600 mt-1">Orders waiting for your confirmation and processing</p>
+              <p className="text-gray-600 mt-1">
+                New and in-progress orders (status: pending, accepted, or processing) until they ship.
+              </p>
             </div>
 
             {/* Stats Cards */}
