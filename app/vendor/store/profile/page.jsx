@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../contexts/AuthContext';
 import Sidebar from '../../../../components/Sidebar';
 import Header from '../../../../components/Header';
 import FormInput from '../../../../components/shared/FormInput';
-import FormSelect from '../../../../components/shared/FormSelect';
 import { Store, Save, Upload, Plus, Eye, Edit, MapPin, Phone, Mail, Star, ShoppingBag, DollarSign, X } from 'lucide-react';
 import vendorProfileService from '../../../../lib/services/vendorProfileService';
 import storeService from '../../../../lib/services/storeService';
@@ -35,6 +35,23 @@ const safeRender = (value, fallback = '') => {
     }
   }
   return String(value);
+};
+
+/** Avoid React "Objects are not valid as a React child" when API sends nested stats. */
+const displayRating = (value) => {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value.toFixed(1);
+  if (typeof value === 'string' && value.trim() !== '') return value;
+  return '0.0';
+};
+
+const displayCount = (value) => {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  if (typeof value === 'bigint') return Number(value);
+  return 0;
 };
 
 /** Unwrap vendor API payloads (camelCase or snake_case, optional nesting). */
@@ -207,7 +224,7 @@ export default function StoreProfilePage() {
         storesData = response.stores;
       }
       
-      setStores(storesData);
+      setStores(Array.isArray(storesData) ? storesData.filter((s) => s && typeof s === 'object') : []);
     } catch (error) {
       console.error('❌ Error fetching vendor stores:', error);
       setStores([]);
@@ -359,37 +376,52 @@ export default function StoreProfilePage() {
     }
   };
 
-  const openStorefrontInNewTab = (store) => {
-    const slug = store?.slug;
-    if (!slug) {
-      alert('This store has no public URL (slug) yet. Try saving the store name again or contact support.');
+  const openStoreDetail = (store) => {
+    const id = store?._id ?? store?.id;
+    if (!id) {
+      alert('Cannot open store: missing id.');
       return;
     }
-    const base = (process.env.NEXT_PUBLIC_FRONTEND_APP_URL || '').replace(/\/$/, '');
-    const url = base ? `${base}/${encodeURIComponent(slug)}` : `/${encodeURIComponent(slug)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    router.push(`/vendor/store/${id}`);
   };
 
   const handleCreateStore = async () => {
+    const name = newStoreData.name?.trim();
+    if (!name) {
+      alert('Store name is required.');
+      return;
+    }
+
+    const addr = newStoreData.address || {};
+    const hasAddress = ['street', 'city', 'state', 'country', 'postalCode'].some((k) =>
+      String(addr[k] || '').trim()
+    );
+
+    const payload = {
+      name,
+      description: newStoreData.description?.trim() || undefined,
+      logo: newStoreData.logo?.trim() || undefined,
+      banner: newStoreData.banner?.trim() || undefined,
+      email: newStoreData.email?.trim() || undefined,
+      phone: newStoreData.phone?.trim() || undefined,
+      isActive: true,
+      ...(hasAddress
+        ? {
+            address: {
+              street: addr.street?.trim() || undefined,
+              city: addr.city?.trim() || undefined,
+              state: addr.state?.trim() || undefined,
+              country: addr.country?.trim() || undefined,
+              postalCode: addr.postalCode?.trim() || undefined,
+            },
+          }
+        : {}),
+    };
+
     try {
       setIsCreatingStore(true);
-      
-      // ownerId is taken from JWT on the catalog service (vendorId || id) when omitted
-      const storeDataToSubmit = {
-        ...newStoreData,
-        ownerId: user?.vendorId || user?.id,
-        isActive: true,
-      };
-      
-      console.log('Creating store with data:', storeDataToSubmit);
-      
-      const response = await storeService.createStore(storeDataToSubmit);
-      console.log('Store created response:', response);
-      
-      // Refresh stores list
+      await storeService.createStore(payload);
       await fetchVendorStores();
-      
-      // Close modal and reset form
       setShowCreateStoreModal(false);
       setNewStoreData({
         name: '',
@@ -403,14 +435,13 @@ export default function StoreProfilePage() {
           city: '',
           state: '',
           country: '',
-          postalCode: ''
-        }
+          postalCode: '',
+        },
       });
-      
       alert('Store created successfully!');
     } catch (error) {
       console.error('Error creating store:', error);
-      alert('Error creating store: ' + (error.response?.data?.message || error.message));
+      alert(`Error creating store: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsCreatingStore(false);
     }
@@ -636,7 +667,11 @@ export default function StoreProfilePage() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreateStoreModal(true)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowCreateStoreModal(true);
+                }}
                 className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 <Plus className="w-4 h-4" />
@@ -663,7 +698,11 @@ export default function StoreProfilePage() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setShowCreateStoreModal(true)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowCreateStoreModal(true);
+                  }}
                   className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto"
                 >
                   <Plus className="w-4 h-4" />
@@ -672,8 +711,11 @@ export default function StoreProfilePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stores.map((store) => (
-                  <div key={store._id || store.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                {stores.map((store, index) => (
+                  <div
+                    key={store._id != null || store.id != null ? String(store._id ?? store.id) : `store-card-${index}`}
+                    className="bg-white rounded-lg shadow-sm overflow-hidden"
+                  >
                     {/* Store Banner */}
                     <div className="h-32 bg-gradient-to-r from-blue-500 to-purple-600 relative">
                       {store.banner ? (
@@ -718,10 +760,10 @@ export default function StoreProfilePage() {
                             <div className="flex items-center space-x-1">
                               <Star className="w-4 h-4 text-yellow-400 fill-current" />
                               <span className="text-sm text-gray-600">
-                                {typeof store.rating === 'number' ? store.rating.toFixed(1) : store.rating || '0.0'}
+                                {displayRating(store.rating)}
                               </span>
                               <span className="text-sm text-gray-500">
-                                ({typeof store.reviewCount === 'number' ? store.reviewCount : store.reviewCount || 0} reviews)
+                                ({displayCount(store.reviewCount)} reviews)
                               </span>
                             </div>
                           </div>
@@ -742,7 +784,7 @@ export default function StoreProfilePage() {
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <ShoppingBag className="w-4 h-4" />
                             <span className="text-sm font-medium">
-                              {typeof store.totalProducts === 'number' ? store.totalProducts : store.totalProducts || 0}
+                              {displayCount(store.totalProducts)}
                             </span>
                           </div>
                           <p className="text-xs text-gray-500">Products</p>
@@ -751,7 +793,7 @@ export default function StoreProfilePage() {
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <Store className="w-4 h-4" />
                             <span className="text-sm font-medium">
-                              {typeof store.totalOrders === 'number' ? store.totalOrders : store.totalOrders || 0}
+                              {displayCount(store.totalOrders)}
                             </span>
                           </div>
                           <p className="text-xs text-gray-500">Orders</p>
@@ -760,7 +802,10 @@ export default function StoreProfilePage() {
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <DollarSign className="w-4 h-4" />
                             <span className="text-sm font-medium">
-                              ${typeof store.totalRevenue === 'number' ? store.totalRevenue.toLocaleString() : store.totalRevenue || 0}
+                              $
+                              {typeof store.totalRevenue === 'number' && !Number.isNaN(store.totalRevenue)
+                                ? store.totalRevenue.toLocaleString()
+                                : displayCount(store.totalRevenue)}
                             </span>
                           </div>
                           <p className="text-xs text-gray-500">Revenue</p>
@@ -800,7 +845,7 @@ export default function StoreProfilePage() {
                       <div className="flex space-x-2">
                         <button
                           type="button"
-                          onClick={() => openStorefrontInNewTab(store)}
+                          onClick={() => openStoreDetail(store)}
                           className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
                         >
                           <Eye className="w-4 h-4" />
@@ -824,13 +869,29 @@ export default function StoreProfilePage() {
         </main>
       </div>
 
-      {/* Edit Store Modal */}
-      {showEditStoreModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6">
+      {showEditStoreModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4"
+            role="presentation"
+            onClick={() => {
+              setShowEditStoreModal(false);
+              setEditingStoreId(null);
+            }}
+          >
+            <div
+              className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-store-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Edit Store</h2>
+                <h2 id="edit-store-title" className="text-xl font-semibold text-gray-900">
+                  Edit Store
+                </h2>
                 <button
                   type="button"
                   onClick={() => {
@@ -997,18 +1058,32 @@ export default function StoreProfilePage() {
                   </button>
                 </div>
               </form>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
-      {/* Create Store Modal */}
-      {showCreateStoreModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6">
+      {showCreateStoreModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4"
+            role="presentation"
+            onClick={() => setShowCreateStoreModal(false)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="create-store-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Create New Store</h2>
+                <h2 id="create-store-title" className="text-xl font-semibold text-gray-900">
+                  Create New Store
+                </h2>
                 <button
                   type="button"
                   onClick={() => setShowCreateStoreModal(false)}
@@ -1172,17 +1247,18 @@ export default function StoreProfilePage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isCreatingStore || !newStoreData.name}
+                    disabled={isCreatingStore || !newStoreData.name?.trim()}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isCreatingStore ? 'Creating...' : 'Create Store'}
                   </button>
                 </div>
               </form>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

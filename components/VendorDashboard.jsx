@@ -222,14 +222,14 @@ const VendorDashboard = () => {
         </div>
       </div>
 
-      {/* Welcome Banner */}
+      {/* Quick actions */}
       <div className="bg-blue-600 rounded-lg p-6 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-2xl font-bold mb-2">Good Morning!</h2>
-            <p className="text-blue-100">Welcome to your Vendor Dashboard</p>
+            <h2 className="text-xl font-bold">Quick actions</h2>
+            <p className="text-blue-100 text-sm mt-1">Gigs, networks, and onboarding</p>
           </div>
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap gap-3">
             <button
               className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors"
               onClick={() => setIsCreateGigDrawerOpen(true)}

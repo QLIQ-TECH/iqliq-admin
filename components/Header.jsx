@@ -2,26 +2,33 @@ import React from 'react';
 import { Menu, Search, Bell } from 'lucide-react';
 
 const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
+  const profileInitial =
+    (user?.name && String(user.name).trim().charAt(0).toUpperCase()) ||
+    (user?.email && String(user.email).trim().charAt(0).toUpperCase()) ||
+    'A';
+
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
-        {/* Left side */}
-        <div className="flex items-center space-x-4">
+        {/* Left: menu (mobile); desktop title skipped for vendors — sidebar already shows IQLIQ */}
+        <div className="flex items-center space-x-4 min-w-0">
           <button
             onClick={onMenuClick}
             className="p-2 rounded-md hover:bg-gray-100 lg:hidden"
           >
             <Menu className="w-6 h-6 text-gray-600" />
           </button>
-          
-          <div className="hidden lg:block">
-            <div className="leading-tight">
-              <h1 className="text-2xl font-bold text-gray-900">IQLIQ</h1>
-              <p className="text-sm text-gray-600">
-                {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Vendor Dashboard'}
-              </p>
+
+          {userType !== 'vendor' && (
+            <div className="hidden lg:block">
+              <div className="leading-tight">
+                <h1 className="text-2xl font-bold text-gray-900">IQLIQ</h1>
+                <p className="text-sm text-gray-600">
+                  {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Vendor Dashboard'}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Center - Search */}
@@ -43,20 +50,17 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
           </button>
           
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">
-                {user ? user.avatar : 'A'}
-              </span>
-            </div>
-            <div className="hidden md:block">
-              <p className="text-sm font-medium text-gray-900">
-                {user ? user.name : (userType === 'superadmin' ? 'Super Admin' : 'Vendor')}
-              </p>
-              <p className="text-xs text-gray-500">
-                {user ? user.email : 'admin@qliq.com'}
-              </p>
-            </div>
+          <div
+            className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center shrink-0 cursor-default"
+            title={
+              user
+                ? [user.name, user.email].filter(Boolean).join(' · ') || undefined
+                : userType === 'superadmin'
+                  ? 'Super Admin'
+                  : 'Vendor'
+            }
+          >
+            <span className="text-white font-bold text-sm">{user ? profileInitial : 'A'}</span>
           </div>
         </div>
       </div>
