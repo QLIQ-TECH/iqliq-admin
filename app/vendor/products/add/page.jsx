@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../contexts/AuthContext';
 import Sidebar from '../../../../components/Sidebar';
@@ -49,6 +49,7 @@ import productService from '../../../../lib/services/productService';
 import vendorService from '../../../../lib/services/vendorService';
 import storeService from '../../../../lib/services/storeService';
 import attributeService from '../../../../lib/services/attributeService';
+import { getCustomerFacingPriceParts, formatMoney } from '../../../../lib/utils/customerFacingPrice';
 
 export default function AddProductPage() {
   const { user, isLoading, logout } = useAuth();
@@ -56,6 +57,30 @@ export default function AddProductPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  const storefrontPreview = useMemo(() => {
+    const pp = Number.parseFloat(String(formData.price));
+    const dp =
+      formData.discount_price !== undefined &&
+      formData.discount_price !== null &&
+      String(formData.discount_price).trim() !== ''
+        ? Number.parseFloat(String(formData.discount_price))
+        : null;
+    if (!Number.isFinite(pp) || pp <= 0) return null;
+    return getCustomerFacingPriceParts({
+      price: pp,
+      discount_price:
+        dp != null && Number.isFinite(dp) && dp > 0 ? dp : undefined,
+      price_includes_vat: Boolean(formData.vat_enabled),
+      vat_percentage:
+        Number.parseFloat(String(formData.vat_percentage || '5')) || 5,
+    });
+  }, [
+    formData.price,
+    formData.discount_price,
+    formData.vat_enabled,
+    formData.vat_percentage,
+  ]);
   
   // Dropdown data
   const [categories, setCategories] = useState([]);
@@ -1000,6 +1025,9 @@ export default function AddProductPage() {
         min_stock_level: formData.min_stock_level ? parseInt(formData.min_stock_level) : undefined,
         warranty_period: formData.warranty_period ? parseInt(formData.warranty_period) : undefined
       };
+      if (!String(formData.barcode ?? '').trim()) {
+        delete submitData.barcode;
+      }
       
       await productService.createProduct(submitData);
       alert('Product created successfully!');
@@ -1487,12 +1515,14 @@ export default function AddProductPage() {
               <ProductSection
                 icon={CircleDollarSign}
                 title="Pricing"
-                description="Set your list price here. Discounts can stay empty—promos and gigs can handle sales separately."
+                description="The ecommerce app shows VAT-inclusive totals. VAT mode decides whether your number is Before VAT or Already includes VAT—see preview below."
               >
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Price <span className="text-red-500">*</span>
+                      {formData.vat_enabled
+                        ? <>Price incl. VAT (AED){' '}<span className="text-red-500">*</span></>
+                        : <>Price before VAT (AED){' '}<span className="text-red-500">*</span></>}
                     </label>
                     <input
                       type="number"
@@ -1553,8 +1583,8 @@ export default function AddProductPage() {
                       onChange={(e) => setFormData(prev => ({ ...prev, vat_enabled: e.target.value === 'true' }))}
                       className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     >
-                      <option value="true">With VAT (price already includes 5%)</option>
-                      <option value="false">Without VAT (add 5% on display)</option>
+                      <option value="true">Entered price includes 5% VAT (what shoppers pay)</option>
+                      <option value="false">Entered price excludes VAT (we add 5% for storefront)</option>
                     </select>
                   </div>
                   <div>
@@ -1571,6 +1601,30 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
+                {storefrontPreview ? (
+                  <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm">
+                    <p className="font-medium text-slate-800">
+                      Shoppers pay{' '}
+                      <span className="text-emerald-800">{formatMoney(storefrontPreview.display, 'AED ')}</span>
+                      <span className="font-normal text-slate-600"> including VAT</span>
+                    </p>
+                    {storefrontPreview.compareAt != null ? (
+                      <p className="mt-1 text-xs text-slate-600">
+                        Listed compare-at{' '}
+                        <span className="line-through">{formatMoney(storefrontPreview.compareAt, 'AED ')}</span>
+                      </p>
+                    ) : null}
+                    <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+                      {formData.vat_enabled
+                        ? `Your input is VAT-inclusive (${storefrontPreview.vatPct}% already in the figure). The main price in the ecommerce app matches this inclusive total when no discount applies.`
+                        : `Your input excludes VAT · the storefront adds ${storefrontPreview.vatPct}% VAT (same rounding rules as catalog). Eg. ${formatMoney(Number(formData.price) || 0, 'AED ')} entered here shows as ${formatMoney(storefrontPreview.display, 'AED ')} to shoppers.`}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-xs text-slate-500">
+                    Enter a valid price to preview the VAT-inclusive total customers see online.
+                  </p>
+                )}
               </ProductSection>
 
               <ProductSection

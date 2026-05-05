@@ -7,7 +7,6 @@ import LoadingScreen from './LoadingScreen';
 import ErrorMessage from './ErrorMessage';
 import RecentActivity from './RecentActivity';
 import { useMetrics } from '../contexts/MetricsContext';
-import { useAuth } from '../contexts/AuthContext';
 import { 
   Users, 
   Store, 
@@ -18,7 +17,6 @@ import {
   CreditCard,
   BarChart3,
   RefreshCw,
-  Clock
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -44,7 +42,7 @@ ChartJS.register(
 );
 
 const SuperAdminDashboard = () => {
-  const { metrics, loading, error, lastUpdated, refreshMetrics, formatMetricValue } = useMetrics();
+  const { metrics, loading, error, refreshMetrics, formatMetricValue } = useMetrics();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [orderStatusDistribution, setOrderStatusDistribution] = useState(null);
   const [userRoleDistribution, setUserRoleDistribution] = useState(null);
@@ -300,30 +298,6 @@ const SuperAdminDashboard = () => {
     }
   }, [orderStatsPeriod, orderStatsGroupBy]);
 
-  const formatLastUpdated = (timestamp) => {
-    if (!timestamp) return 'Never';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
-    
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-    return date.toLocaleDateString();
-  };
-
-  const formatTimeAgo = (timestamp) => {
-    if (!timestamp) return 'Unknown';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
-    
-    if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-    return `${Math.floor(diffInSeconds / 86400)} days ago`;
-  };
-
   // Chart configurations
   // Order status colors mapping - colors assigned based on status from model
   const getOrderStatusColor = (status) => {
@@ -418,14 +392,8 @@ const SuperAdminDashboard = () => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold mb-2">Good Morning!</h2>
-            <p className="text-blue-100">Welcome to the IQLIQ Super Admin Dashboard</p>
-            {/* <p className="text-blue-200 text-sm mt-1">Multi-vendor marketplace management</p> */}
-            {lastUpdated && (
-              <div className="flex items-center mt-2 text-blue-200 text-xs">
-                <Clock className="w-3 h-3 mr-1" />
-                Last updated: {formatLastUpdated(lastUpdated)}
-              </div>
-            )}
+            <p className="text-blue-100">Here’s a quick snapshot of marketplace health and activity.</p>
+            {/* Metrics &ldquo;Last updated&rdquo; is shown once on System Health controls below */}
           </div>
           {/* <div className="flex space-x-3">
             <button 

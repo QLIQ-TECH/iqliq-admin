@@ -168,7 +168,7 @@ const PendingOrdersPage = () => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         return (
           <span className="font-medium text-green-600">
-            ${order.total?.toFixed(2) || order.totalAmount?.toFixed(2) || '0.00'}
+            ${Number(order.totalAmount ?? order.total ?? 0).toFixed(2)}
           </span>
         );
       }
@@ -218,7 +218,7 @@ const PendingOrdersPage = () => {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          handleStatusUpdate(order._id, 'confirmed');
+          handleStatusUpdate(order._id, 'accepted');
         }}
         className="p-2 text-green-600 hover:bg-green-50 rounded"
         title="Confirm Order"

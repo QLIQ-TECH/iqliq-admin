@@ -7,7 +7,8 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import Sidebar from '../../../../components/Sidebar';
 import Header from '../../../../components/Header';
 import storeService from '../../../../lib/services/storeService';
-import { ArrowLeft, Store, MapPin, Phone, Mail, Globe, Calendar, ExternalLink } from 'lucide-react';
+import productService from '../../../../lib/services/productService';
+import { ArrowLeft, Store, MapPin, Phone, Mail, Globe, Calendar, ExternalLink, Package } from 'lucide-react';
 
 function extractStore(body) {
   if (!body || typeof body !== 'object') return null;
@@ -20,15 +21,17 @@ function extractStore(body) {
   return null;
 }
 
-/** Compare catalog owner field to JWT vendor id / user id */
-function ownsStore(ownerIdRaw, vendorId, userId) {
-  const want = vendorId ?? userId;
-  if (!want || ownerIdRaw == null) return false;
+/** Compare catalog owner field to JWT vendor id / user id (multiple shapes from auth). */
+function ownsStore(ownerIdRaw, user) {
+  if (ownerIdRaw == null || !user) return false;
   const ownerStr =
     typeof ownerIdRaw === 'object' && ownerIdRaw?.toString
       ? ownerIdRaw.toString()
       : String(ownerIdRaw);
-  return ownerStr === String(want);
+  const candidates = [user.vendorId, user.id, user._id]
+    .filter((x) => x != null && x !== '')
+    .map((x) => String(x));
+  return candidates.some((c) => c === ownerStr);
 }
 
 export default function VendorStoreDetailPage() {
@@ -42,6 +45,8 @@ export default function VendorStoreDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [store, setStore] = useState(null);
+  const [storeProducts, setStoreProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(false);
 
   const vendorKey = user?.vendorId ?? user?.id;
 
@@ -54,6 +59,7 @@ export default function VendorStoreDetailPage() {
     try {
       setLoading(true);
       setError(null);
+      setStoreProducts([]);
       const raw = await storeService.getStoreById(storeId);
       const doc = extractStore(raw);
       if (!doc || typeof doc !== 'object') {
@@ -62,7 +68,7 @@ export default function VendorStoreDetailPage() {
         return;
       }
 
-      const allowed = ownsStore(doc.ownerId, user?.vendorId, user?.id);
+      const allowed = ownsStore(doc.ownerId, user);
 
       if (!allowed) {
         setError('You do not have access to this store.');
@@ -71,14 +77,30 @@ export default function VendorStoreDetailPage() {
       }
 
       setStore(doc);
+
+      const key = user?.vendorId ?? user?.id;
+      if (key && doc._id) {
+        try {
+          setProductsLoading(true);
+          const prodRes = await productService.getVendorStoreCatalog(String(doc._id), String(key));
+          const list = Array.isArray(prodRes?.data) ? prodRes.data : [];
+          setStoreProducts(list);
+        } catch (pe) {
+          console.error('Store products load failed:', pe);
+          setStoreProducts([]);
+        } finally {
+          setProductsLoading(false);
+        }
+      }
     } catch (e) {
       console.error('Store detail load failed:', e);
       setError(e.message || 'Failed to load store.');
       setStore(null);
+      setStoreProducts([]);
     } finally {
       setLoading(false);
     }
-  }, [storeId, user?.vendorId, user?.id]);
+  }, [storeId, user]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -240,6 +262,68 @@ export default function VendorStoreDetailPage() {
                   ) : null}
                 </div>
               )}
+
+              <div className="rounded-xl bg-white border border-gray-200 shadow-sm p-6 space-y-4">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-gray-500" />
+                  Products in this store
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Includes draft and pending approval — same catalog you manage under Products.
+                </p>
+                {productsLoading ? (
+                  <p className="text-sm text-gray-500">Loading products…</p>
+                ) : storeProducts.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No products linked to this store yet. Add products from the vendor Products area.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {storeProducts.map((p) => {
+                      const pid = p._id ?? p.id;
+                      const img = Array.isArray(p.images) ? p.images[0] : null;
+                      const thumb =
+                        typeof img === 'string'
+                          ? img
+                          : img && typeof img === 'object'
+                            ? img.url
+                            : null;
+                      return (
+                        <li key={String(pid)} className="py-3 flex items-center gap-3 first:pt-0">
+                          <div className="w-14 h-14 rounded-lg bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
+                            {thumb ? (
+                              <img src={thumb} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Package className="w-6 h-6 text-gray-300" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-gray-900 truncate">{p.title || 'Product'}</p>
+                            <p className="text-xs text-gray-500 capitalize">
+                              {[p.approval_status, p.status].filter(Boolean).join(' · ') || '—'}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-medium text-gray-900">
+                              {p.price != null && !Number.isNaN(Number(p.price))
+                                ? Number(p.price).toFixed(2)
+                                : '—'}
+                            </p>
+                            {pid ? (
+                              <Link
+                                href={`/vendor/products/edit/${pid}`}
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                Edit
+                              </Link>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
 
               {(store.createdAt || store.updatedAt) && (
                 <div className="rounded-xl bg-gray-100/80 border border-gray-200 p-4 flex flex-wrap gap-6 text-sm text-gray-600">

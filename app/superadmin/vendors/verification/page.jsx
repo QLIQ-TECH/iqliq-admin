@@ -21,6 +21,129 @@ import {
 } from 'lucide-react';
 import vendorService from '../../../../lib/services/vendorService';
 
+const DOC_SLOTS = [
+  { key: 'businessLicense', label: 'Business License', aliases: ['businessLicense', 'business_license', 'tradeLicense', 'trade_license', 'license'] },
+  { key: 'taxId', label: 'Tax ID', aliases: ['taxId', 'tax_id', 'vat', 'vat_certificate', 'taxCertificate', 'vatCertificate'] },
+  { key: 'bankAccount', label: 'Bank Account', aliases: ['bankAccount', 'bank_account', 'bankStatement', 'bank_statement'] },
+];
+
+/** Pull a displayable URL/path/string from API values (string key, nested { url }, etc.). */
+function coerceDocValue(v) {
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number') return String(v).trim();
+  if (typeof v === 'object') {
+    return coerceDocValue(
+      v.url ?? v.href ?? v.signedUrl ?? v.publicUrl ?? v.fileUrl ?? v.path ?? v.key ?? ''
+    );
+  }
+  return '';
+}
+
+function pickFromObject(obj, aliases) {
+  if (!obj || typeof obj !== 'object') return '';
+  for (const a of aliases) {
+    const val = coerceDocValue(obj[a]);
+    if (val) return val;
+  }
+  return '';
+}
+
+/** Canonical { businessLicense, taxId, bankAccount } — merges nested `documents` + snake_case + top-level fallbacks */
+function flattenVendorDocuments(vendor) {
+  const docBag = vendor?.documents && typeof vendor.documents === 'object' ? { ...vendor.documents } : {};
+  const merged = {};
+  for (const { key, aliases } of DOC_SLOTS) {
+    merged[key] = pickFromObject(docBag, aliases) || pickFromObject(vendor, aliases);
+  }
+  return merged;
+}
+
+/** Build an absolute browser URL so <a href> and window.open work (admin hostname is not vendor API origin). */
+function resolveVendorDocumentHref(raw, vendorId) {
+  const s = coerceDocValue(raw);
+  if (!s) return '';
+
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return `https:${s}`;
+
+  const publicBase = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_VENDOR_DOCUMENT_PUBLIC_BASE_URL) || '';
+
+  try {
+    const apiUrl =
+      (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_VENDOR_API_URL) || 'http://localhost:8009/api';
+    const base = apiUrl.startsWith('http') ? apiUrl : `https://${apiUrl}`;
+    const u = new URL(base);
+    const origin = u.origin;
+    const pathPrefix = (u.pathname || '/api').replace(/\/$/, '');
+
+    if (s.startsWith('/')) return `${origin}${s}`;
+
+    const isLikelyBareKey =
+      vendorId &&
+      typeof s === 'string' &&
+      s.length > 0 &&
+      !/\s/.test(s) &&
+      !/^https?:/i.test(s) &&
+      !s.startsWith('/');
+
+    if (isLikelyBareKey && origin && pathPrefix) {
+      const qUrl = `${origin}${pathPrefix}/vendors/${encodeURIComponent(vendorId)}/documents/download?key=${encodeURIComponent(s)}`;
+      return qUrl;
+    }
+
+    if (origin) {
+      if (publicBase) {
+        const b = String(publicBase).replace(/\/$/, '');
+        return `${b}/${encodeURIComponent(s)}`;
+      }
+      return `${origin}${pathPrefix}/uploads/vendor-documents/${encodeURIComponent(s)}`;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  return s;
+}
+
+function unwrapVendorDocumentsPayload(body) {
+  if (!body || typeof body !== 'object') return null;
+  const inner =
+    body.documents ??
+    body.data?.documents ??
+    body.data ??
+    body.result ??
+    body;
+  if (!inner || typeof inner !== 'object') return null;
+  if (Array.isArray(inner)) {
+    const mapped = { businessLicense: '', taxId: '', bankAccount: '' };
+    for (const row of inner) {
+      const typeRaw = coerceDocValue(row.documentType ?? row.type ?? row.category ?? row.name ?? '');
+      const type = String(typeRaw).toLowerCase();
+      const url = coerceDocValue(row.url ?? row.fileUrl ?? row.signedUrl ?? row.path ?? row);
+      if (!url) continue;
+      if (/business|license|trade/i.test(type)) mapped.businessLicense = url;
+      else if (/tax|vat|ein/i.test(type)) mapped.taxId = url;
+      else if (/bank/i.test(type)) mapped.bankAccount = url;
+    }
+    return mapped;
+  }
+  return flattenVendorDocuments(inner);
+}
+
+function mergeCanonicalDocuments(prev, incoming) {
+  const a = flattenVendorDocuments({ documents: prev });
+  const b =
+    incoming && typeof incoming === 'object'
+      ? flattenVendorDocuments(incoming)
+      : { businessLicense: '', taxId: '', bankAccount: '' };
+  const out = { ...a };
+  for (const k of ['businessLicense', 'taxId', 'bankAccount']) {
+    const bv = coerceDocValue(b[k]);
+    if (bv) out[k] = bv;
+  }
+  return out;
+}
+
 export default function VendorVerification() {
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
@@ -31,6 +154,7 @@ export default function VendorVerification() {
   const [showModal, setShowModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -62,10 +186,12 @@ export default function VendorVerification() {
       const vendorsData = response.data || [];
       
       // Normalize ID/business fields without injecting fake documents
-      const transformedVendors = vendorsData.map(vendor => ({
+      const transformedVendors = vendorsData.map((vendor) => ({
         ...vendor,
-        id: vendor.id || vendor._id, // Handle both id and _id fields
-        businessName: vendor.businessName || 'N/A'
+        id: vendor.id || vendor._id,
+        businessName: vendor.businessName || 'N/A',
+        verified: !!(vendor.verified ?? vendor.isVerified),
+        documents: flattenVendorDocuments(vendor),
       }));
       
       setVendors(transformedVendors);
@@ -148,6 +274,48 @@ export default function VendorVerification() {
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
+  };
+
+  const refreshVendorDocuments = async (vendor) => {
+    const id = vendor?.id || vendor?._id;
+    if (!id) return;
+    setDocumentsLoading(true);
+    try {
+      const res = await vendorService.getVendorDocuments(id);
+      const next = unwrapVendorDocumentsPayload(res);
+      if (next) {
+        setSelectedVendor((prev) => {
+          if (!prev || (prev.id || prev._id) !== id) return prev;
+          return {
+            ...prev,
+            documents: mergeCanonicalDocuments(prev.documents ?? {}, next),
+          };
+        });
+      }
+    } catch (err) {
+      console.warn('[Vendor Verification] Could not refresh documents from API:', err?.message || err);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  };
+
+  const openVendorDetailsModal = async (vendor) => {
+    const normalized = {
+      ...vendor,
+      id: vendor.id || vendor._id,
+      verified: !!(vendor.verified ?? vendor.isVerified),
+      documents: flattenVendorDocuments(vendor),
+    };
+    setSelectedVendor(normalized);
+    setShowModal(true);
+    await refreshVendorDocuments(normalized);
+  };
+
+  const openDocumentViewer = (label, rawUrl) => {
+    const vid = selectedVendor?.id || selectedVendor?._id;
+    const href = resolveVendorDocumentHref(rawUrl, vid);
+    setSelectedDocument({ label, raw: rawUrl, href });
+    setShowDocumentModal(true);
   };
 
   const filteredVendors = vendors.filter(vendor => {
@@ -382,23 +550,41 @@ export default function VendorVerification() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
-                            {vendor.documents?.businessLicense && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">License</span>
-                            )}
-                            {vendor.documents?.taxId && (
-                              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Tax ID</span>
-                            )}
-                            {vendor.documents?.bankAccount && (
-                              <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Bank</span>
-                            )}
+                            {(() => {
+                              const rd = flattenVendorDocuments(vendor);
+                              return (
+                                <>
+                                  {coerceDocValue(rd.businessLicense) && (
+                                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                      License
+                                    </span>
+                                  )}
+                                  {coerceDocValue(rd.taxId) && (
+                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                      Tax ID
+                                    </span>
+                                  )}
+                                  {coerceDocValue(rd.bankAccount) && (
+                                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                      Bank
+                                    </span>
+                                  )}
+                                  {!coerceDocValue(rd.businessLicense) &&
+                                    !coerceDocValue(rd.taxId) &&
+                                    !coerceDocValue(rd.bankAccount) && (
+                                      <span className="text-xs text-gray-400">None</span>
+                                    )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
                             <button
+                              type="button"
                               onClick={() => {
-                                setSelectedVendor(vendor);
-                                setShowModal(true);
+                                openVendorDetailsModal(vendor);
                               }}
                               className="bg-blue-100 text-blue-600 hover:bg-blue-200 px-3 py-1 rounded-lg text-sm font-medium transition-colors"
                               title="View Details & Take Action"
@@ -433,7 +619,12 @@ export default function VendorVerification() {
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">Vendor Details</h2>
                 <button
-                  onClick={() => setShowModal(false)}
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setShowDocumentModal(false);
+                    setSelectedDocument(null);
+                  }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <XCircle className="h-6 w-6" />
@@ -468,110 +659,78 @@ export default function VendorVerification() {
 
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Documents</h3>
+                  {documentsLoading && (
+                    <p className="text-sm text-gray-500 mb-2">Loading document links…</p>
+                  )}
                   <div className="space-y-2">
-                    {selectedVendor.documents?.businessLicense && (
-                      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-gray-400" />
-                          <span className="text-sm text-gray-900">Business License</span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            console.log('Viewing Business License:', selectedVendor.documents.businessLicense);
-                            setSelectedDocument({ 
-                              label: 'Business License', 
-                              url: selectedVendor.documents.businessLicense 
-                            });
-                            setShowDocumentModal(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-                          disabled={!selectedVendor.documents.businessLicense}
-                        >
-                          View
-                        </button>
-                      </div>
-                    )}
-                    {selectedVendor.documents?.taxId && (
-                      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-gray-400" />
-                          <span className="text-sm text-gray-900">Tax ID</span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            console.log('Viewing Tax ID:', selectedVendor.documents.taxId);
-                            setSelectedDocument({ 
-                              label: 'Tax ID', 
-                              url: selectedVendor.documents.taxId 
-                            });
-                            setShowDocumentModal(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-                          disabled={!selectedVendor.documents.taxId}
-                        >
-                          View
-                        </button>
-                      </div>
-                    )}
-                    {selectedVendor.documents?.bankAccount && (
-                      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-gray-400" />
-                          <span className="text-sm text-gray-900">Bank Account</span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            console.log('Viewing Bank Account:', selectedVendor.documents.bankAccount);
-                            setSelectedDocument({ 
-                              label: 'Bank Account', 
-                              url: selectedVendor.documents.bankAccount 
-                            });
-                            setShowDocumentModal(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-                          disabled={!selectedVendor.documents.bankAccount}
-                        >
-                          View
-                        </button>
-                      </div>
-                    )}
-                    {!selectedVendor.documents?.businessLicense &&
-                      !selectedVendor.documents?.taxId &&
-                      !selectedVendor.documents?.bankAccount && (
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">No documents uploaded.</div>
-                      )}
+                    {(() => {
+                      const docsBag = flattenVendorDocuments(selectedVendor);
+                      const hasAnyDoc = DOC_SLOTS.some(({ key }) => coerceDocValue(docsBag[key]));
+                      if (!hasAnyDoc && !documentsLoading) {
+                        return (
+                          <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600 border border-gray-100">
+                            No documents
+                          </div>
+                        );
+                      }
+                      return DOC_SLOTS.map(({ key, label }) => {
+                        const raw = coerceDocValue(docsBag[key]);
+                        if (!raw) return null;
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg gap-3"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <FileText className="h-5 w-5 text-gray-400 shrink-0" />
+                              <span className="text-sm text-gray-900 truncate">{label}</span>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={documentsLoading}
+                              onClick={() => openDocumentViewer(label, raw)}
+                              className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors shrink-0 disabled:text-gray-400 disabled:cursor-not-allowed"
+                            >
+                              View
+                            </button>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               </div>
             </div>
             
-            {/* Fixed footer for action buttons */}
-            <div className="p-6 border-t border-gray-200 bg-gray-50">
-              {!selectedVendor.verified ? (
+            {/* Fixed footer — single approve/reject control (handles both verified and isVerified flags) */}
+            <div className="p-6 border-t border-gray-200 bg-gray-50 space-y-0">
+              {selectedVendor.verified ? (
+                <div className="flex items-center justify-center gap-2 text-green-800 bg-green-50 p-4 rounded-lg">
+                  <CheckCircle className="h-5 w-5" />
+                  <span className="font-medium">This vendor has been verified (Commission Model)</span>
+                </div>
+              ) : (
                 <div className="flex gap-3">
                   <button
+                    type="button"
                     onClick={() => {
                       handleVerify(selectedVendor.id);
                       setShowModal(false);
                     }}
                     className="flex-1 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
                   >
-                    ✓ Verify Vendor
+                    Verify Vendor
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       handleReject(selectedVendor.id);
                       setShowModal(false);
                     }}
                     className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition-colors font-medium"
                   >
-                    ✗ Reject Vendor
+                    Reject Vendor
                   </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-2 text-green-800 bg-green-50 p-4 rounded-lg">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">This vendor has been verified (Commission Model)</span>
                 </div>
               )}
             </div>
@@ -580,57 +739,79 @@ export default function VendorVerification() {
       )}
 
       {showDocumentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-xl w-full p-6">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowDocumentModal(false)}
+          role="presentation"
+        >
+          <div
+            className="bg-white rounded-lg max-w-xl w-full p-6"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">{selectedDocument?.label || 'Document'}</h3>
-              <button onClick={() => setShowDocumentModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button
+                type="button"
+                onClick={() => setShowDocumentModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
                 <XCircle className="h-5 w-5" />
               </button>
             </div>
-            {selectedDocument?.url ? (
+            {selectedDocument?.href ? (
               <div className="space-y-3">
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500 mb-1">Document URL:</p>
-                  <p className="text-sm text-gray-700 break-all font-mono">{selectedDocument.url}</p>
-                </div>
-                <div className="flex gap-3">
-                  <a
-                    href={selectedDocument.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    onClick={(e) => {
-                      console.log('Opening document:', selectedDocument.url);
-                      // Add a small delay to check if the URL is valid
-                      try {
-                        const url = new URL(selectedDocument.url);
-                        console.log('Valid URL detected:', url.href);
-                      } catch (error) {
-                        console.error('Invalid URL:', selectedDocument.url, error);
-                        e.preventDefault();
-                        alert('Invalid document URL. Please contact support.');
-                      }
-                    }}
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    Open Document
-                  </a>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(selectedDocument.url);
-                      console.log('URL copied to clipboard');
-                    }}
-                    className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                  >
-                    Copy URL
-                  </button>
-                </div>
+                {(() => {
+                  const h = selectedDocument.href || '';
+                  const isImg = /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(h.split('?')[0] || '');
+                  const isPdf = /\.pdf$/i.test(h.split('?')[0] || '');
+                  return (
+                    <>
+                      {(isImg || isPdf) && (
+                        <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
+                          {isImg ? (
+                            <img src={h} alt={selectedDocument.label || 'Document'} className="max-h-64 mx-auto object-contain" />
+                          ) : (
+                            <iframe title="Document preview" src={h} className="w-full h-72 border-0" />
+                          )}
+                        </div>
+                      )}
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500 mb-1">Resolved URL</p>
+                        <p className="text-sm text-gray-700 break-all font-mono">{h}</p>
+                        {selectedDocument.raw && coerceDocValue(selectedDocument.raw) !== h && (
+                          <p className="text-xs text-gray-500 mt-2 break-all">Stored reference: {String(selectedDocument.raw)}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <a
+                          href={h}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Open in new tab
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(h);
+                          }}
+                          className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                        >
+                          Copy URL
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <div className="text-center py-8">
                 <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-600">No documents uploaded for this item.</p>
+                <p className="text-sm text-gray-600">No document URL could be resolved for this item.</p>
               </div>
             )}
           </div>

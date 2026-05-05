@@ -22,7 +22,7 @@ import {
 import {
   extractOrdersListFromApiResponse,
   isVendorFulfillmentPendingStatus,
-  normalizeOrderStatus,
+  normalizeVendorOrder,
 } from '../../../lib/utils/vendorOrderUtils';
 
 const VendorOrdersPage = () => {
@@ -51,22 +51,6 @@ const VendorOrdersPage = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
 
-  const normalizeOrder = (order) => {
-    const items = Array.isArray(order?.items) ? order.items : [];
-    const vendorItemsTotal = items.reduce((sum, item) => sum + ((Number(item?.price) || 0) * (Number(item?.quantity) || 0)), 0);
-    const status = normalizeOrderStatus(order);
-    return {
-      ...order,
-      status,
-      orderNumber: order?.orderNumber || order?._id?.slice(-8),
-      totalAmount: Number(order?.totalAmount ?? order?.total ?? vendorItemsTotal ?? 0),
-      customer: order?.customer || {
-        name: order?.shippingAddress?.fullName || order?.userId?.name || 'N/A',
-        email: order?.shippingAddress?.email || order?.userId?.email || 'N/A',
-      },
-    };
-  };
-
   useEffect(() => {
     if (!isLoading && !user) {
       router.push('/login');
@@ -90,7 +74,7 @@ const VendorOrdersPage = () => {
       console.log('📊 Orders Response:', response);
       
       const ordersDataRaw = extractOrdersListFromApiResponse(response);
-      const normalizedOrders = ordersDataRaw.map(normalizeOrder);
+      const normalizedOrders = ordersDataRaw.map(normalizeVendorOrder);
       console.log('📦 Processed Orders Data:', normalizedOrders);
       setOrders(normalizedOrders);
       

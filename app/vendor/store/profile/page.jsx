@@ -67,29 +67,68 @@ function extractStoreProfileBody(res) {
 
 function mapRemoteToStoreForm(src) {
   if (!src || typeof src !== 'object') return null;
-  const bh = src.businessHours || src.business_hours;
-  const sm = src.socialMedia || src.social_media;
+  const root =
+    src.storeProfile ??
+    src.store_profile ??
+    (src.vendorProfile && typeof src.vendorProfile === 'object' ? src.vendorProfile : null) ??
+    src;
+  const s = typeof root === 'object' ? root : src;
+  const bh = s.businessHours || s.business_hours;
+  const sm = s.socialMedia || s.social_media;
   return {
-    storeName: src.storeName ?? src.store_name ?? '',
-    storeDescription: src.storeDescription ?? src.store_description ?? '',
-    storeLogo: src.storeLogo ?? src.store_logo ?? '',
-    storeBanner: src.storeBanner ?? src.store_banner ?? '',
-    storeUrl: src.storeUrl ?? src.store_url ?? '',
+    storeName: s.storeName ?? s.store_name ?? '',
+    storeDescription: s.storeDescription ?? s.store_description ?? '',
+    storeLogo: s.storeLogo ?? s.store_logo ?? '',
+    storeBanner: s.storeBanner ?? s.store_banner ?? '',
+    storeUrl: s.storeUrl ?? s.store_url ?? '',
     address:
-      typeof src.address === 'string'
-        ? src.address
-        : [src.address?.street, src.address?.line1].filter(Boolean).join(', ') ||
-          src.street ||
-          '',
-    city: src.city ?? src.address?.city ?? '',
-    state: src.state ?? src.address?.state ?? '',
-    zipCode: src.zipCode ?? src.zip_code ?? src.address?.zipCode ?? src.address?.postalCode ?? '',
-    country: src.country || src.address?.country || 'USA',
-    phone: src.phone ?? '',
-    email: src.email ?? '',
+      typeof s.address === 'string'
+        ? s.address
+        : [s.address?.street, s.address?.line1].filter(Boolean).join(', ') ||
+          (s.street || ''),
+    city: s.city ?? s.address?.city ?? '',
+    state: s.state ?? s.address?.state ?? '',
+    zipCode: s.zipCode ?? s.zip_code ?? s.address?.zipCode ?? s.address?.postalCode ?? '',
+    country: s.country || s.address?.country || 'USA',
+    phone: s.phone ?? '',
+    email: s.email ?? '',
     businessHours: bh && typeof bh === 'object' ? { ...DEFAULT_BUSINESS_HOURS, ...bh } : { ...DEFAULT_BUSINESS_HOURS },
     socialMedia: sm && typeof sm === 'object' ? { ...DEFAULT_SOCIAL, ...sm } : { ...DEFAULT_SOCIAL },
   };
+}
+
+/** Prefer non-empty mapped fields over previous state (avoids wiping form when GET echoes sparse profile). */
+function mergeStoreProfileState(prev, mapped) {
+  if (!mapped) return prev || {};
+  const next = { ...prev };
+  const scalars = [
+    'storeName',
+    'storeDescription',
+    'storeLogo',
+    'storeBanner',
+    'storeUrl',
+    'address',
+    'city',
+    'state',
+    'zipCode',
+    'country',
+    'phone',
+    'email',
+  ];
+  for (const key of scalars) {
+    const v = mapped[key];
+    const str = typeof v === 'string' ? v.trim() : v;
+    if (str !== undefined && str !== null && str !== '') {
+      next[key] = v;
+    }
+  }
+  if (mapped.businessHours && typeof mapped.businessHours === 'object') {
+    next.businessHours = { ...(next.businessHours || {}), ...mapped.businessHours };
+  }
+  if (mapped.socialMedia && typeof mapped.socialMedia === 'object') {
+    next.socialMedia = { ...(next.socialMedia || {}), ...mapped.socialMedia };
+  }
+  return next;
 }
 
 export default function StoreProfilePage() {
@@ -181,7 +220,7 @@ export default function StoreProfilePage() {
         const mapped = mapRemoteToStoreForm(profileBody);
         if (mapped) {
           console.log('📋 Setting profile data (normalized):', mapped);
-          setFormData((prev) => ({ ...prev, ...mapped }));
+          setFormData((prev) => mergeStoreProfileState(prev, mapped));
         }
       } else {
         console.log('📋 No profile data found or empty response, using defaults');
@@ -235,6 +274,7 @@ export default function StoreProfilePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const snapshotBeforeSave = { ...formData };
     try {
       setSaving(true);
       console.log('🏪 Updating store profile:', formData);
@@ -263,8 +303,9 @@ export default function StoreProfilePage() {
       const updatedBody = extractStoreProfileBody(response);
       if (updatedBody && Object.keys(updatedBody).length > 0) {
         const mapped = mapRemoteToStoreForm(updatedBody);
-        if (mapped) setFormData((prev) => ({ ...prev, ...mapped }));
+        if (mapped) setFormData(mergeStoreProfileState(snapshotBeforeSave, mapped));
       } else {
+        setFormData(snapshotBeforeSave);
         await fetchStoreProfile();
       }
 
