@@ -1,11 +1,16 @@
+'use client';
+
 import React from 'react';
-import { Menu, Search, Bell } from 'lucide-react';
+import Link from 'next/link';
+import { Menu, Search, Bell, Gift } from 'lucide-react';
 
 const Header = ({ onMenuClick, onNotificationClick, userType = 'superadmin', user }) => {
   const profileInitial =
     (user?.name && String(user.name).trim().charAt(0).toUpperCase()) ||
     (user?.email && String(user.email).trim().charAt(0).toUpperCase()) ||
     'A';
+
+  const referralHref = userType === 'vendor' ? '/vendor/referral' : '/admin/referral';
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -42,11 +47,15 @@ const Header = ({ onMenuClick, onNotificationClick, userType = 'superadmin', use
 
         {/* Right side */}
         <div className="flex items-center space-x-4">
-          <button
-            type="button"
-            onClick={onNotificationClick}
-            className="p-2 rounded-md hover:bg-gray-100 relative"
+          <Link
+            href={referralHref}
+            className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:bg-blue-800 transition"
           >
+            {/* <Gift className="h-4 w-4" /> */}
+            Refer Now
+          </Link>
+
+          <button className="p-2 rounded-md hover:bg-gray-100 relative">
             <Bell className="w-6 h-6 text-gray-600" />
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
           </button>
