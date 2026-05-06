@@ -46,6 +46,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    // Safety net: never allow auth bootstrap to keep the app in loading forever.
+    const loadingGuard = setTimeout(() => {
+      if (isMounted) {
+        console.warn('⚠️ Auth init timeout reached, forcing isLoading=false');
+        setIsLoading(false);
+      }
+    }, 8000);
+
     const initAuth = async () => {
       // Small delay to ensure localStorage is ready
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -87,7 +96,7 @@ export const AuthProvider = ({ children }) => {
               accessToken: savedToken,
               refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY) || null,
             });
-            setIsLoading(false);
+            if (isMounted) setIsLoading(false);
             
             // Optionally verify token in background (don't wait for it)
             // Only clear session if explicitly unauthorized
@@ -97,7 +106,7 @@ export const AuthProvider = ({ children }) => {
           } catch (error) {
             console.error('❌ Error parsing saved auth data:', error);
             clearAuthData();
-            setIsLoading(false);
+            if (isMounted) setIsLoading(false);
           }
         } else {
           const vendorAccess = localStorage.getItem('access_token');
@@ -109,22 +118,27 @@ export const AuthProvider = ({ children }) => {
                 localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
               }
               await verifyToken(vendorAccess);
-              setIsLoading(false);
+              if (isMounted) setIsLoading(false);
             } catch (e) {
               console.error('Vendor token adoption failed:', e);
-              setIsLoading(false);
+              if (isMounted) setIsLoading(false);
             }
           } else {
             console.log('❌ No saved session found');
-            setIsLoading(false);
+            if (isMounted) setIsLoading(false);
           }
         }
       } else {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
     
     initAuth();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(loadingGuard);
+    };
   }, []);
 
   const verifyToken = async (accessToken) => {

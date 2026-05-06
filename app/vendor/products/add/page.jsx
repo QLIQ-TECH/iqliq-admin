@@ -58,30 +58,6 @@ export default function AddProductPage() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const storefrontPreview = useMemo(() => {
-    const pp = Number.parseFloat(String(formData.price));
-    const dp =
-      formData.discount_price !== undefined &&
-      formData.discount_price !== null &&
-      String(formData.discount_price).trim() !== ''
-        ? Number.parseFloat(String(formData.discount_price))
-        : null;
-    if (!Number.isFinite(pp) || pp <= 0) return null;
-    return getCustomerFacingPriceParts({
-      price: pp,
-      discount_price:
-        dp != null && Number.isFinite(dp) && dp > 0 ? dp : undefined,
-      price_includes_vat: Boolean(formData.vat_enabled),
-      vat_percentage:
-        Number.parseFloat(String(formData.vat_percentage || '5')) || 5,
-    });
-  }, [
-    formData.price,
-    formData.discount_price,
-    formData.vat_enabled,
-    formData.vat_percentage,
-  ]);
-  
   // Dropdown data
   const [categories, setCategories] = useState([]);
   const [level2Categories, setLevel2Categories] = useState([]);
@@ -168,6 +144,31 @@ export default function AddProductPage() {
   const [nestedAttrKey, setNestedAttrKey] = useState('');
   const [nestedAttrValue, setNestedAttrValue] = useState('');
   
+  // Calculate storefront preview pricing
+  const storefrontPreview = useMemo(() => {
+    const pp = Number.parseFloat(String(formData.price));
+    const dp =
+      formData.discount_price !== undefined &&
+      formData.discount_price !== null &&
+      String(formData.discount_price).trim() !== ''
+        ? Number.parseFloat(String(formData.discount_price))
+        : null;
+    if (!Number.isFinite(pp) || pp <= 0) return null;
+    return getCustomerFacingPriceParts({
+      price: pp,
+      discount_price:
+        dp != null && Number.isFinite(dp) && dp > 0 ? dp : undefined,
+      price_includes_vat: Boolean(formData.vat_enabled),
+      vat_percentage:
+        Number.parseFloat(String(formData.vat_percentage || '5')) || 5,
+    });
+  }, [
+    formData.price,
+    formData.discount_price,
+    formData.vat_enabled,
+    formData.vat_percentage,
+  ]);
+  
   // Store requirement state
   const [showStoreRequired, setShowStoreRequired] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
@@ -188,6 +189,12 @@ export default function AddProductPage() {
   });
   const [storePreviewState, setStorePreviewState] = useState({ logoValid: null, bannerValid: null });
 
+  const generateBarcode = () => {
+    const stamp = Date.now().toString().slice(-10);
+    const rand = Math.floor(1000 + Math.random() * 9000).toString();
+    return `${stamp}${rand}`;
+  };
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.push('/login');
@@ -201,6 +208,13 @@ export default function AddProductPage() {
       fetchDropdownData();
     }
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    // Keep barcode optional in UI, but ensure we always submit a valid generated value.
+    if (!String(formData.barcode || '').trim()) {
+      setFormData((prev) => ({ ...prev, barcode: generateBarcode() }));
+    }
+  }, []);
 
   const fetchDropdownData = async () => {
     try {
@@ -1019,14 +1033,15 @@ export default function AddProductPage() {
         price: parseFloat(formData.price),
         discount_price: formData.discount_price ? parseFloat(formData.discount_price) : undefined,
         cost_price: formData.cost_price ? parseFloat(formData.cost_price) : undefined,
-        vat_percentage: 5,
+        vat_percentage: Math.min(100, Math.max(0, parseFloat(formData.vat_percentage) || 5)),
+        vat_enabled: Boolean(formData.vat_enabled),
         price_includes_vat: Boolean(formData.vat_enabled),
         stock_quantity: parseInt(formData.stock_quantity),
         min_stock_level: formData.min_stock_level ? parseInt(formData.min_stock_level) : undefined,
         warranty_period: formData.warranty_period ? parseInt(formData.warranty_period) : undefined
       };
-      if (!String(formData.barcode ?? '').trim()) {
-        delete submitData.barcode;
+      if (!String(submitData.barcode ?? '').trim()) {
+        submitData.barcode = generateBarcode();
       }
       
       await productService.createProduct(submitData);
@@ -2110,4 +2125,3 @@ export default function AddProductPage() {
     </div>
   );
 }
-

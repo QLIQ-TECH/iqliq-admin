@@ -30,6 +30,16 @@ export default function VendorPage() {
     setSidebarOpen(!sidebarOpen);
   };
 
+  const handleNotificationClick = () => {
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'notifications';
+      const section = document.getElementById('vendor-notifications');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
   // Show loading spinner while checking authentication
   if (isLoading) {
     return (
@@ -68,6 +78,7 @@ export default function VendorPage() {
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-0">
         <Header 
           onMenuClick={toggleSidebar} 
+          onNotificationClick={handleNotificationClick}
           userType="vendor"
           user={user}
         />

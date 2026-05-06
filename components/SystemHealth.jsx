@@ -1,14 +1,46 @@
-import React, { useState, useEffect } from 'react';
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { 
   Server, 
   CheckCircle, 
   XCircle, 
   Clock, 
-  Activity,
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
+
+/** Normalize API shape (object or array) and drop duplicate services (same endpoint identity). */
+function getServiceEntries(services) {
+  if (!services) return [];
+
+  const raw = Array.isArray(services)
+    ? services.map((svc, idx) => [svc.id || svc.slug || String(idx), svc])
+    : Object.entries(services);
+
+  const seen = new Set();
+  const out = [];
+  for (const [key, svc] of raw) {
+    const fingerprint =
+      (svc?.url || '').trim() ||
+      [svc?.name, svc?.port].filter(Boolean).join(':') ||
+      String(key);
+    if (!fingerprint || seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    out.push([key, svc]);
+  }
+  return out;
+}
+
+function formatAggregateUptime(raw) {
+  if (raw == null || raw === '') return { text: '—', label: 'Avg Uptime' };
+  const n = Number(raw);
+  if (!Number.isNaN(n) && n >= 0 && n <= 100) {
+    return { text: `${n}%`, label: 'Avg Uptime' };
+  }
+  return { text: `${raw}s`, label: 'Avg Uptime (s)' };
+}
 
 const SystemHealth = () => {
   const [metrics, setMetrics] = useState(null);
@@ -74,6 +106,14 @@ const SystemHealth = () => {
     }
   };
 
+  const serviceEntries = useMemo(() => getServiceEntries(metrics?.services), [metrics?.services]);
+
+  const overallUptimeDisplay = useMemo(
+    () =>
+      metrics?.overall != null ? formatAggregateUptime(metrics.overall.uptime) : null,
+    [metrics?.overall?.uptime]
+  );
+
   if (isLoading && !metrics) {
     return (
       <div className="space-y-6">
@@ -134,9 +174,9 @@ const SystemHealth = () => {
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-green-600">
-                  {metrics.overall.uptime}
+                  {overallUptimeDisplay?.text}
                 </div>
-                <div className="text-sm text-gray-600">Avg Uptime (s)</div>
+                <div className="text-sm text-gray-600">{overallUptimeDisplay?.label}</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-purple-600">
@@ -157,7 +197,8 @@ const SystemHealth = () => {
 
       {/* Individual Services */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {metrics && Object.entries(metrics.services).map(([key, service]) => (
+        {metrics &&
+          serviceEntries.map(([key, service]) => (
           <Card key={key} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center justify-between text-sm">
@@ -184,14 +225,6 @@ const SystemHealth = () => {
                   <span className="text-gray-600">Port:</span>
                   <span className="font-medium">{service.port}</span>
                 </div>
-                {service.lastCheck && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Last Check:</span>
-                    <span className="font-medium text-xs">
-                      {new Date(service.lastCheck).toLocaleTimeString()}
-                    </span>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>

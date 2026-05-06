@@ -1,7 +1,7 @@
 import React from 'react';
 import { Menu, Search, Bell } from 'lucide-react';
 
-const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
+const Header = ({ onMenuClick, onNotificationClick, userType = 'superadmin', user }) => {
   const profileInitial =
     (user?.name && String(user.name).trim().charAt(0).toUpperCase()) ||
     (user?.email && String(user.email).trim().charAt(0).toUpperCase()) ||
@@ -10,7 +10,7 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
-        {/* Left: menu (mobile); desktop title skipped for vendors — sidebar already shows IQLIQ */}
+        {/* Left: hamburger (mobile). Desktop: context title only — sidebar already shows IQLIQ branding */}
         <div className="flex items-center space-x-4 min-w-0">
           <button
             onClick={onMenuClick}
@@ -20,13 +20,10 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
           </button>
 
           {userType !== 'vendor' && (
-            <div className="hidden lg:block">
-              <div className="leading-tight">
-                <h1 className="text-2xl font-bold text-gray-900">IQLIQ</h1>
-                <p className="text-sm text-gray-600">
-                  {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Vendor Dashboard'}
-                </p>
-              </div>
+            <div className="hidden lg:block min-w-0">
+              <h1 className="text-xl font-semibold text-gray-900 tracking-tight truncate">
+                {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Dashboard'}
+              </h1>
             </div>
           )}
         </div>
@@ -45,7 +42,11 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
 
         {/* Right side */}
         <div className="flex items-center space-x-4">
-          <button className="p-2 rounded-md hover:bg-gray-100 relative">
+          <button
+            type="button"
+            onClick={onNotificationClick}
+            className="p-2 rounded-md hover:bg-gray-100 relative"
+          >
             <Bell className="w-6 h-6 text-gray-600" />
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
           </button>

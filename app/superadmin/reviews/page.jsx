@@ -44,6 +44,8 @@ const ReviewsPage = () => {
     rejectedReviews: 0
   });
   const [topProducts, setTopProducts] = useState([]);
+  const [selectedReview, setSelectedReview] = useState(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const [filters, setFilters] = useState({
     rating: 'all',
     status: 'all',
@@ -52,6 +54,8 @@ const ReviewsPage = () => {
     dateRange: 'all',
     search: ''
   });
+
+  const getReviewId = (review) => String(review?.id || review?._id || '');
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -134,23 +138,33 @@ const ReviewsPage = () => {
   };
 
   const calculateTopProducts = (reviewsData) => {
-    // Group reviews by product
+    // Group reviews by product (normalize id so ObjectId vs string does not split groups)
     const productReviews = {};
-    reviewsData.forEach(review => {
-      const productId = review.productId;
+    reviewsData.forEach((review) => {
+      const productId = String(review.productId ?? '');
+      if (!productId) return;
       if (!productReviews[productId]) {
         productReviews[productId] = {
           productId,
           productName: review.productName || 'Unknown Product',
+          productImage: review.productImage || (Array.isArray(review.images) && review.images[0] ? review.images[0] : null),
           reviews: [],
           totalRating: 0,
           averageRating: 0,
-          reviewCount: 0
+          reviewCount: 0,
         };
       }
-      productReviews[productId].reviews.push(review);
-      productReviews[productId].totalRating += review.rating;
-      productReviews[productId].reviewCount += 1;
+      const bucket = productReviews[productId];
+      if (review.productName && review.productName !== 'Unknown Product') {
+        bucket.productName = review.productName;
+      }
+      if (!bucket.productImage) {
+        if (review.productImage) bucket.productImage = review.productImage;
+        else if (Array.isArray(review.images) && review.images[0]) bucket.productImage = review.images[0];
+      }
+      bucket.reviews.push(review);
+      bucket.totalRating += review.rating;
+      bucket.reviewCount += 1;
     });
 
     // Calculate average ratings
@@ -187,12 +201,12 @@ const ReviewsPage = () => {
 
     // Product filter
     if (filters.product !== 'all') {
-      filtered = filtered.filter(r => r.productId === filters.product);
+      filtered = filtered.filter(r => String(r.productId) === String(filters.product));
     }
 
     // Vendor filter
     if (filters.vendor !== 'all') {
-      filtered = filtered.filter(r => r.vendorId === filters.vendor);
+      filtered = filtered.filter(r => String(r.vendorId) === String(filters.vendor));
     }
 
     // Date range filter
@@ -224,7 +238,11 @@ const ReviewsPage = () => {
       filtered = filtered.filter(r => 
         r.title?.toLowerCase().includes(searchTerm) ||
         r.userId?.toLowerCase().includes(searchTerm) ||
+        r.customerName?.toLowerCase().includes(searchTerm) ||
         r.productId?.toLowerCase().includes(searchTerm) ||
+        r.productName?.toLowerCase().includes(searchTerm) ||
+        r.vendorName?.toLowerCase().includes(searchTerm) ||
+        r.storeName?.toLowerCase().includes(searchTerm) ||
         r.comment?.toLowerCase().includes(searchTerm)
       );
     }
@@ -234,6 +252,17 @@ const ReviewsPage = () => {
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      rating: 'all',
+      status: 'all',
+      product: 'all',
+      vendor: 'all',
+      dateRange: 'all',
+      search: ''
+    });
   };
 
   const getRatingStars = (rating) => {
@@ -306,6 +335,11 @@ const ReviewsPage = () => {
         return handleReviewAction(reviewId, action, 'store');
       }
     }
+  };
+
+  const openReviewDetails = (review) => {
+    setSelectedReview(review);
+    setShowReviewModal(true);
   };
 
   if (isLoading || loading) {
@@ -401,33 +435,55 @@ const ReviewsPage = () => {
               </h2>
             </div>
             <div className="p-6">
+              {topProducts.length === 0 ? (
+                <p className="text-sm text-gray-500">No product review data to rank yet.</p>
+              ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {topProducts.map((product, index) => (
-                  <div key={product.productId} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-medium text-gray-900 text-sm">
-                        #{index + 1} {product.productName}
-                      </h3>
-                      <span className="text-xs text-gray-500">#{index + 1}</span>
+                  <button
+                    type="button"
+                    key={product.productId}
+                    className="border border-gray-200 rounded-lg p-4 text-left hover:border-blue-300 hover:bg-blue-50/50 transition-colors"
+                    onClick={() => setFilters((prev) => ({ ...prev, product: product.productId }))}
+                    title="Filter table by this product"
+                  >
+                    <div className="flex gap-3 mb-2">
+                      <div className="flex-shrink-0 w-14 h-14 rounded-lg bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center">
+                        {product.productImage ? (
+                          <img
+                            src={product.productImage}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <Package className="w-6 h-6 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-medium text-gray-900 text-sm line-clamp-2">
+                            #{index + 1} {product.productName}
+                          </h3>
+                        </div>
+                        <div className="flex items-center mt-1">
+                          {getRatingStars(Math.round(product.averageRating))}
+                          <span className="ml-2 text-sm text-gray-600">
+                            {product.averageRating.toFixed(1)} ({product.reviewCount} reviews)
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center mb-2">
-                      {getRatingStars(Math.round(product.averageRating))}
-                      <span className="ml-2 text-sm text-gray-600">
-                        {product.averageRating.toFixed(1)} ({product.reviewCount} reviews)
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {product.reviewCount} total reviews
-                    </div>
-                  </div>
+                  </button>
                 ))}
               </div>
+              )}
             </div>
           </div>
 
           {/* Filters */}
           <div className="bg-white p-6 rounded-lg shadow mb-6">
-            <div className={`grid grid-cols-1 md:grid-cols-${Array.isArray(vendors) && vendors.length > 0 ? '6' : '5'} gap-4`}>
+            <div className={`grid grid-cols-1 ${Array.isArray(vendors) && vendors.length > 0 ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-4`}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Rating</label>
                 <select
@@ -521,6 +577,15 @@ const ReviewsPage = () => {
                 </div>
               </div>
             </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Reset Filters
+              </button>
+            </div>
           </div>
 
           {/* Reviews Table */}
@@ -554,14 +619,34 @@ const ReviewsPage = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredReviews.map((review) => (
-                    <tr key={review._id} className="hover:bg-gray-50">
+                    <tr key={getReviewId(review)} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {review.title || review.userId || 'Anonymous'}
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center">
+                            {review.productImage ? (
+                              <img
+                                src={review.productImage}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <Package className="w-4 h-4 text-gray-400" />
+                            )}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            Product ID: {review.productId}
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {review.customerName || review.title || review.userId || 'Anonymous'}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {review.customerEmail || 'Email: N/A'}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {review.customerPhone || 'Phone: N/A'}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {review.productName || 'Unknown Product'}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -584,8 +669,30 @@ const ReviewsPage = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          Store ID: {review.storeId || 'N/A'}
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center">
+                            {review.storeLogo ? (
+                              <img
+                                src={review.storeLogo}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <Store className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-900">
+                              {review.vendorName || 'Vendor: N/A'}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {review.vendorEmail || 'Vendor Email: N/A'}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {review.storeName || 'Store: N/A'}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -607,7 +714,7 @@ const ReviewsPage = () => {
                             <>
                               <button
                                 onClick={() => handleReviewAction(
-                                  review._id, 
+                                  getReviewId(review), 
                                   'approve', 
                                   review.storeId && !review.productId ? 'store' : 'product'
                                 )}
@@ -618,7 +725,7 @@ const ReviewsPage = () => {
                               </button>
                               <button
                                 onClick={() => handleReviewAction(
-                                  review._id, 
+                                  getReviewId(review), 
                                   'reject', 
                                   review.storeId && !review.productId ? 'store' : 'product'
                                 )}
@@ -629,7 +736,11 @@ const ReviewsPage = () => {
                               </button>
                             </>
                           )}
-                          <button className="text-blue-600 hover:text-blue-900" title="View Details">
+                          <button
+                            className="text-blue-600 hover:text-blue-900"
+                            title="View Details"
+                            onClick={() => openReviewDetails(review)}
+                          >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button className="text-orange-600 hover:text-orange-900" title="Flag">
@@ -655,6 +766,68 @@ const ReviewsPage = () => {
               </div>
             )}
           </div>
+
+          {showReviewModal && selectedReview && (
+            <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Review Details</h3>
+                  <button
+                    className="text-gray-500 hover:text-gray-700"
+                    onClick={() => {
+                      setShowReviewModal(false);
+                      setSelectedReview(null);
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="space-y-3 text-sm">
+                  {selectedReview.productImage && (
+                    <div className="mb-2">
+                      <img
+                        src={selectedReview.productImage}
+                        alt="Product"
+                        className="h-20 w-20 object-cover rounded border border-gray-200"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  )}
+                  <div><span className="font-medium">Product:</span> {selectedReview.productName || 'Unknown Product'}</div>
+                  <div><span className="font-medium">Customer:</span> {selectedReview.customerName || selectedReview.userId || 'Anonymous'}</div>
+                  <div><span className="font-medium">Vendor:</span> {selectedReview.vendorName || 'N/A'}</div>
+                  <div><span className="font-medium">Store:</span> {selectedReview.storeName || 'N/A'}</div>
+                  <div><span className="font-medium">Rating:</span> {selectedReview.rating}/5</div>
+                  <div><span className="font-medium">Status:</span> {selectedReview.status}</div>
+                  <div><span className="font-medium">Comment:</span> {selectedReview.comment || 'No comment'}</div>
+                  {Array.isArray(selectedReview.images) && selectedReview.images.length > 0 && (
+                    <div>
+                      <div className="font-medium mb-2">Uploaded Images</div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {selectedReview.images.map((img, idx) => (
+                          <a
+                            key={`${img}-${idx}`}
+                            href={img}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block"
+                          >
+                            <img
+                              src={img}
+                              alt={`Review image ${idx + 1}`}
+                              className="w-full h-28 object-cover rounded border border-gray-200"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

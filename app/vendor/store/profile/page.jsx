@@ -979,25 +979,45 @@ export default function StoreProfilePage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Logo URL</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Store Logo URL</label>
                     <input
                       type="url"
                       name="logo"
                       value={editStoreData.logo}
                       onChange={handleEditStoreInputChange}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com/logo.png"
                     />
+                    {editStoreData.logo && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img
+                          src={editStoreData.logo}
+                          alt="Store logo preview"
+                          className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Banner URL</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Store Banner URL</label>
                     <input
                       type="url"
                       name="banner"
                       value={editStoreData.banner}
                       onChange={handleEditStoreInputChange}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com/banner.png"
                     />
+                    {editStoreData.banner && (
+                      <div className="mt-2">
+                        <img
+                          src={editStoreData.banner}
+                          alt="Store banner preview"
+                          className="w-full h-20 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1177,6 +1197,15 @@ export default function StoreProfilePage() {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="https://example.com/logo.png"
                     />
+                    {newStoreData.logo && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img
+                          src={newStoreData.logo}
+                          alt="Store logo preview"
+                          className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
                   </div>
                   
                   <div>
@@ -1191,6 +1220,15 @@ export default function StoreProfilePage() {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="https://example.com/banner.png"
                     />
+                    {newStoreData.banner && (
+                      <div className="mt-2">
+                        <img
+                          src={newStoreData.banner}
+                          alt="Store banner preview"
+                          className="w-full h-20 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
                   </div>
                   
                   <div>
@@ -1303,4 +1341,3 @@ export default function StoreProfilePage() {
     </div>
   );
 }
-

@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MetricCard from './MetricCard';
 import CreateGigDrawer from './createGig/CreateGigDrawer';
 import { useAuth } from '../contexts/AuthContext';
 import productService from '../lib/services/productService';
 import orderService from '../lib/services/orderService';
+import notificationService from '../lib/services/notificationService';
 import { extractOrdersListFromApiResponse, normalizeOrderStatus } from '../lib/utils/vendorOrderUtils';
 import { 
   ShoppingBag, 
@@ -15,6 +16,7 @@ import {
   Users,
   CreditCard,
   BarChart3,
+  Bell,
 } from 'lucide-react';
 
 const VendorDashboard = () => {
@@ -26,6 +28,10 @@ const VendorDashboard = () => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [recentOrders, setRecentOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const socketRef = useRef(null);
 
   const vendorKey = user?.vendorId || user?.id;
 
@@ -56,6 +62,102 @@ const VendorDashboard = () => {
     };
 
     fetchVendorProducts();
+  }, [vendorKey]);
+
+  useEffect(() => {
+    const scrollToNotifications = () => {
+      if (typeof window === 'undefined') return;
+      if (window.location.hash !== '#notifications') return;
+      const section = document.getElementById('vendor-notifications');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+
+    scrollToNotifications();
+    window.addEventListener('hashchange', scrollToNotifications);
+    return () => window.removeEventListener('hashchange', scrollToNotifications);
+  }, []);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (!vendorKey) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
+      try {
+        setNotificationsLoading(true);
+        const response = await notificationService.getUserNotifications({ limit: 20 });
+        const list = Array.isArray(response?.data) ? response.data : [];
+        setNotifications(list);
+        setUnreadCount(Number(response?.unreadCount || 0));
+      } catch (error) {
+        console.error('Error fetching vendor notifications:', error);
+        setNotifications([]);
+        setUnreadCount(0);
+      } finally {
+        setNotificationsLoading(false);
+      }
+    };
+
+    fetchNotifications();
+  }, [vendorKey]);
+
+  useEffect(() => {
+    let mounted = true;
+    const connectSocket = async () => {
+      if (!vendorKey) return;
+      try {
+        const [{ io }, apiClientModule] = await Promise.all([
+          import('socket.io-client'),
+          import('../lib/apiClient'),
+        ]);
+        if (!mounted) return;
+
+        const token = apiClientModule?.authApi?.getAuthToken?.();
+        const socketUrl =
+          process.env.NEXT_PUBLIC_ADMIN_WS_URL ||
+          process.env.NEXT_PUBLIC_ADMIN_API_URL?.replace(/\/api$/, '') ||
+          'http://localhost:8009';
+
+        const socket = io(socketUrl, {
+          path: '/socket.io',
+          transports: ['websocket', 'polling'],
+          query: { userId: vendorKey },
+          auth: token ? { token } : undefined,
+        });
+
+        socket.on('connect', () => {
+          socket.emit('join', { userId: vendorKey });
+        });
+
+        socket.on('notification:new', (payload) => {
+          const incoming = payload?.notification;
+          if (!incoming || !mounted) return;
+          setNotifications((prev) => {
+            const exists = prev.some((n) => String(n._id) === String(incoming._id));
+            if (exists) return prev;
+            return [incoming, ...prev].slice(0, 20);
+          });
+          setUnreadCount((prev) => prev + 1);
+        });
+
+        socketRef.current = socket;
+      } catch (error) {
+        console.error('Failed to connect vendor notification socket:', error);
+      }
+    };
+
+    connectSocket();
+
+    return () => {
+      mounted = false;
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
   }, [vendorKey]);
 
   useEffect(() => {
@@ -143,6 +245,32 @@ const VendorDashboard = () => {
     return styles[mappedStatus] || styles.unknown;
   };
 
+  const handleOpenNetworks = () => {
+    // "My Networks" is managed under gigs/campaign workflows for vendors.
+    router.push('/vendor/gigs');
+  };
+
+  const handleNotificationClick = async (notification) => {
+    try {
+      if (!notification?.isRead && notification?._id) {
+        await notificationService.markAsRead(notification._id);
+        setNotifications((prev) =>
+          prev.map((n) => String(n._id) === String(notification._id) ? { ...n, isRead: true } : n)
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      }
+    } catch (error) {
+      console.error('Failed to mark notification read:', error);
+    }
+
+    const targetUrl =
+      notification?.actionUrl ||
+      (notification?.metadata?.productId ? `/vendor/products/edit/${notification.metadata.productId}` : null);
+    if (targetUrl) {
+      router.push(targetUrl);
+    }
+  };
+
   return (
     <div className="space-y-8 relative">
       <CreateGigDrawer
@@ -150,7 +278,7 @@ const VendorDashboard = () => {
         onClose={() => setIsCreateGigDrawerOpen(false)}
       />
 
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div id="vendor-notifications" className="bg-white rounded-lg border border-gray-200 p-6">
         <h3 className="text-xl font-bold text-gray-900 mb-4">My Products Status Overview</h3>
 
         <div className="flex flex-wrap gap-2 mb-4">
@@ -237,14 +365,61 @@ const VendorDashboard = () => {
             >
               + Create Gigs
             </button>
-            <button className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors">
+            <button
+              type="button"
+              onClick={handleOpenNetworks}
+              className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors"
+            >
               My Networks
-            </button>
-            <button className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors">
-              Launch Tour
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-blue-600" />
+            Notifications
+          </h3>
+          <span className="text-sm text-gray-500">
+            {unreadCount} unread
+          </span>
+        </div>
+        {notificationsLoading ? (
+          <p className="text-sm text-gray-500">Loading notifications...</p>
+        ) : notifications.length === 0 ? (
+          <p className="text-sm text-gray-500">No notifications yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {notifications.map((notification) => (
+              <button
+                key={notification._id}
+                type="button"
+                onClick={() => handleNotificationClick(notification)}
+                className={`w-full text-left border rounded-lg p-3 transition-colors ${
+                  notification.isRead
+                    ? 'border-gray-200 bg-white hover:bg-gray-50'
+                    : 'border-blue-200 bg-blue-50 hover:bg-blue-100'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{notification.title}</p>
+                    <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                  </div>
+                  {!notification.isRead && (
+                    <span className="w-2 h-2 rounded-full bg-blue-600 mt-2 shrink-0"></span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  {notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ''}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Account Health Section */}
