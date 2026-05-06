@@ -23,6 +23,16 @@ import {
 import { commissionService } from '../../../../lib/services/commissionService';
 import vendorService from '../../../../lib/services/vendorService';
 
+/** Stable string id for matching API rows (ObjectId vs string). */
+function vendorRowId(vendor) {
+  const raw = vendor?.id ?? vendor?._id ?? vendor?.vendorId;
+  if (raw == null) return '';
+  if (typeof raw === 'object' && raw !== null && typeof raw.toString === 'function') {
+    return String(raw.toString());
+  }
+  return String(raw);
+}
+
 export default function CommissionSettings() {
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
@@ -81,19 +91,34 @@ export default function CommissionSettings() {
         console.log('Failed to load global settings:', globalResponse);
       }
 
-      // Load vendors for commission setting - use commission-specific endpoint
-      const vendorResponse = await commissionService.getAllVendorCommissionSettings({ search: searchTerm });
-      if (vendorResponse.success) {
-        // The commission endpoint returns only active vendors with commission data and verification status
-        const transformedVendors = vendorResponse.data.map(vendor => ({
-          ...vendor,
-          // Normalize ID field - handle both id and _id formats
-          id: vendor.id || vendor._id || vendor.vendorId,
-          // Ensure both verification fields are consistent
-          verified: vendor.verified || false,
-          isVerified: vendor.verified || false,
-          businessName: vendor.businessName || 'N/A'
-        }));
+      // Vendors list from ecom-master (direct DB) — avoids admin API delegating to auth via RabbitMQ
+      const dc = globalResponse.success && globalResponse.data?.defaultCommission != null
+        ? Number(globalResponse.data.defaultCommission)
+        : 10;
+      const vendorResponse = await vendorService.getAllVendors({
+        search: searchTerm || undefined,
+        status: 'all',
+        limit: 5000,
+        page: 1,
+      });
+      if (vendorResponse.success && Array.isArray(vendorResponse.data)) {
+        const transformedVendors = vendorResponse.data.map((vendor) => {
+          const stored =
+            vendor.commissionRate != null && typeof vendor.commissionRate === 'number'
+              ? vendor.commissionRate
+              : null;
+          const rowId = vendorRowId(vendor);
+          return {
+            ...vendor,
+            id: rowId,
+            _id: rowId,
+            verified: vendor.verified || false,
+            isVerified: vendor.isVerified ?? vendor.verified ?? false,
+            businessName: vendor.businessName || 'N/A',
+            commissionRate: stored ?? dc,
+            hasCustomCommission: stored !== null,
+          };
+        });
         console.log('🔍 Transformed vendors:', transformedVendors.map(v => ({ id: v.id, name: v.name, email: v.email })));
         setVendors(transformedVendors);
       }
@@ -125,7 +150,8 @@ export default function CommissionSettings() {
   };
 
   const handleVendorCommissionUpdate = async (vendorId, newCommissionRate) => {
-    if (!vendorId || vendorId === 'undefined') {
+    const idKey = vendorRowId({ id: vendorId, _id: vendorId, vendorId });
+    if (!idKey || idKey === 'undefined') {
       console.error('❌ Invalid vendor ID:', vendorId);
       alert('Error: Invalid vendor ID. Please refresh the page and try again.');
       return;
@@ -139,17 +165,16 @@ export default function CommissionSettings() {
     }
 
     try {
-      console.log('🔄 Updating commission for vendor:', vendorId, 'to rate:', rate);
-      const response = await commissionService.updateVendorCommission(vendorId, rate);
+      console.log('🔄 Updating commission for vendor:', idKey, 'to rate:', rate);
+      const response = await commissionService.updateVendorCommission(idKey, rate);
       
       console.log('💡 Commission update response:', response);
       
       if (response && (response.success || response.data)) {
-        // Update local state
+        // Update local state (string-compare ids so Mongo ObjectId !== string does not break updates)
         setVendors(prev => 
           prev.map(vendor => {
-            const normalizedVendorId = vendor.id || vendor._id || vendor.vendorId;
-            return normalizedVendorId === vendorId
+            return vendorRowId(vendor) === idKey
               ? { ...vendor, commissionRate: rate, hasCustomCommission: true }
               : vendor;
           })
@@ -185,7 +210,7 @@ export default function CommissionSettings() {
   const handleCommissionSubmit = async () => {
     if (!selectedVendor || !commissionRate) return;
     
-    const vendorId = selectedVendor.id || selectedVendor._id || selectedVendor.vendorId;
+    const vendorId = vendorRowId(selectedVendor);
     if (!vendorId || vendorId === 'undefined') {
       alert('Error: Invalid vendor ID. Please refresh the page and try again.');
       return;
@@ -475,7 +500,7 @@ export default function CommissionSettings() {
                           return matchesSearch && matchesFilter;
                         })
                         .map((vendor) => (
-                        <tr key={vendor.id || vendor._id || vendor.vendorId} className="hover:bg-gray-50">
+                        <tr key={vendorRowId(vendor)} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">{vendor.name}</div>
                           </td>
@@ -506,17 +531,26 @@ export default function CommissionSettings() {
                                 <div className="flex items-center gap-2">
                                   <input
                                     type="number"
-                                    defaultValue={vendor.commissionRate || 10}
+                                    key={`commission-input-${vendorRowId(vendor)}-${vendor.commissionRate}`}
+                                    defaultValue={
+                                      vendor.commissionRate ??
+                                      globalSettings.defaultCommission ??
+                                      10
+                                    }
                                     onBlur={(e) => {
-                                      const vendorId = vendor.id || vendor._id || vendor.vendorId;
-                                      if (!vendorId) {
+                                      const rowId = vendorRowId(vendor);
+                                      if (!rowId) {
                                         console.error('❌ Vendor ID is missing:', vendor);
                                         alert('Error: Vendor ID is missing. Please refresh the page.');
                                         return;
                                       }
                                       const newValue = parseFloat(e.target.value);
-                                      if (newValue !== (vendor.commissionRate || 10)) {
-                                        handleVendorCommissionUpdate(vendorId, newValue);
+                                      const baseline =
+                                        vendor.commissionRate ??
+                                        globalSettings.defaultCommission ??
+                                        10;
+                                      if (!Number.isNaN(newValue) && newValue !== baseline) {
+                                        handleVendorCommissionUpdate(rowId, newValue);
                                       }
                                     }}
                                     onKeyDown={(e) => {
@@ -561,8 +595,8 @@ export default function CommissionSettings() {
                                     onClick={() => {
                                       if (confirm(`Reset commission rate for ${vendor.name} to global default?`)) {
                                         // Reset to global default
-                                        const vendorId = vendor.id || vendor._id || vendor.vendorId;
-                                        handleVendorCommissionUpdate(vendorId, globalSettings.defaultCommission);
+                                        const rowId = vendorRowId(vendor);
+                                        handleVendorCommissionUpdate(rowId, globalSettings.defaultCommission);
                                       }
                                     }}
                                     className="text-orange-600 hover:text-orange-900"

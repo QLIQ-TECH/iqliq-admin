@@ -128,6 +128,16 @@ const VendorReviewsPage = () => {
     }
   };
 
+  const handleModeration = async (reviewId, status) => {
+    try {
+      await reviewService.updateProductReview(reviewId, { status });
+      await fetchVendorReviews();
+      await fetchReviewStats();
+    } catch (error) {
+      console.error(`Error setting review status to ${status}:`, error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -364,7 +374,7 @@ const VendorReviewsPage = () => {
                       </div>
                     </div>
 
-                    <div className="ml-4">
+                    <div className="ml-4 flex flex-col items-end gap-2">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         review.status === 'approved' ? 'bg-green-100 text-green-800' :
                         review.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
@@ -372,6 +382,22 @@ const VendorReviewsPage = () => {
                       }`}>
                         {review.status}
                       </span>
+                      {review.status === 'pending' && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200"
+                            onClick={() => handleModeration(review._id || review.id, 'approved')}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
+                            onClick={() => handleModeration(review._id || review.id, 'rejected')}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 

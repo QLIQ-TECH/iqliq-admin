@@ -21,13 +21,28 @@ function extractStore(body) {
   return null;
 }
 
+function extractProductsList(body) {
+  if (!body || typeof body !== 'object') return [];
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.products)) return body.products;
+  if (Array.isArray(body.data?.products)) return body.data.products;
+  if (Array.isArray(body.data?.data)) return body.data.data;
+  if (Array.isArray(body.data?.data?.products)) return body.data.data.products;
+  return [];
+}
+
 /** Compare catalog owner field to JWT vendor id / user id (multiple shapes from auth). */
 function ownsStore(ownerIdRaw, user) {
   if (ownerIdRaw == null || !user) return false;
+  const normalizedOwner =
+    typeof ownerIdRaw === 'object'
+      ? ownerIdRaw?._id ?? ownerIdRaw?.id ?? ownerIdRaw
+      : ownerIdRaw;
   const ownerStr =
-    typeof ownerIdRaw === 'object' && ownerIdRaw?.toString
-      ? ownerIdRaw.toString()
-      : String(ownerIdRaw);
+    typeof normalizedOwner === 'object' && normalizedOwner?.toString
+      ? normalizedOwner.toString()
+      : String(normalizedOwner);
   const candidates = [user.vendorId, user.id, user._id]
     .filter((x) => x != null && x !== '')
     .map((x) => String(x));
@@ -83,7 +98,7 @@ export default function VendorStoreDetailPage() {
         try {
           setProductsLoading(true);
           const prodRes = await productService.getVendorStoreCatalog(String(doc._id), String(key));
-          const list = Array.isArray(prodRes?.data) ? prodRes.data : [];
+          const list = extractProductsList(prodRes);
           setStoreProducts(list);
         } catch (pe) {
           console.error('Store products load failed:', pe);

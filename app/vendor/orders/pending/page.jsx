@@ -16,7 +16,7 @@ import {
   Eye,
   Edit
 } from 'lucide-react';
-import { extractOrdersListFromApiResponse } from '../../../../lib/utils/vendorOrderUtils';
+import { extractOrdersListFromApiResponse, normalizeVendorOrder } from '../../../../lib/utils/vendorOrderUtils';
 
 const PendingOrdersPage = () => {
   const { user, isLoading } = useAuth();
@@ -55,7 +55,7 @@ const PendingOrdersPage = () => {
       const response = await orderService.getVendorPendingOrders(user?.vendorId || user?.id);
       console.log('📊 Pending Orders Response:', response);
       
-      const ordersData = extractOrdersListFromApiResponse(response);
+      const ordersData = extractOrdersListFromApiResponse(response).map(normalizeVendorOrder);
       setPendingOrders(ordersData);
       
       // Calculate stats
@@ -139,7 +139,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'orderNumber', 
       label: 'Order #',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <div className="text-gray-400">N/A</div>;
         return (
           <div className="font-medium text-gray-900">
@@ -151,7 +151,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'customer', 
       label: 'Customer',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <div className="text-gray-400">N/A</div>;
         return (
           <div>
@@ -164,11 +164,11 @@ const PendingOrdersPage = () => {
     { 
       key: 'total', 
       label: 'Total',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         return (
           <span className="font-medium text-green-600">
-            ${Number(order.totalAmount ?? order.total ?? 0).toFixed(2)}
+            AED {Number(order.totalAmount ?? order.total ?? 0).toFixed(2)}
           </span>
         );
       }
@@ -176,7 +176,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'priority', 
       label: 'Priority',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         const priority = getOrderPriority(order);
         return (
@@ -189,7 +189,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'createdAt', 
       label: 'Order Date',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         const orderDate = new Date(order.createdAt);
         const daysDiff = Math.floor((new Date() - orderDate) / (1000 * 60 * 60 * 24));

@@ -49,6 +49,14 @@ const VendorOrderDetailPage = () => {
       quantity: Number(item?.quantity || 0),
     }));
     const computedSubtotal = normalizedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const resolvedShippingCost = Number(
+      raw?.shippingCost ??
+      raw?.shippingMethodCost ??
+      raw?.deliveryCharge ??
+      raw?.deliveryCharges ??
+      raw?.shipping ??
+      0
+    );
     return {
       ...raw,
       items: normalizedItems,
@@ -66,9 +74,9 @@ const VendorOrderDetailPage = () => {
         country: shippingAddress.country || '',
       },
       subtotal: Number(raw?.subtotal ?? computedSubtotal ?? 0),
-      shippingCost: Number(raw?.shippingCost ?? raw?.shipping ?? 0),
+      shippingCost: Number.isFinite(resolvedShippingCost) ? resolvedShippingCost : 0,
       tax: Number(raw?.tax ?? 0),
-      total: Number(raw?.total ?? raw?.totalAmount ?? (computedSubtotal + Number(raw?.shippingCost || 0) + Number(raw?.tax || 0))),
+      total: Number(raw?.total ?? raw?.totalAmount ?? (computedSubtotal + (Number.isFinite(resolvedShippingCost) ? resolvedShippingCost : 0) + Number(raw?.tax || 0))),
     };
   };
 

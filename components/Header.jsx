@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Menu, Search, Bell, Gift } from 'lucide-react';
 
-const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
+const Header = ({ onMenuClick, onNotificationClick, userType = 'superadmin', user }) => {
   const profileInitial =
     (user?.name && String(user.name).trim().charAt(0).toUpperCase()) ||
     (user?.email && String(user.email).trim().charAt(0).toUpperCase()) ||
@@ -15,7 +15,7 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
-        {/* Left: menu (mobile); desktop title skipped for vendors — sidebar already shows IQLIQ */}
+        {/* Left: hamburger (mobile). Desktop: context title only — sidebar already shows IQLIQ branding */}
         <div className="flex items-center space-x-4 min-w-0">
           <button
             onClick={onMenuClick}
@@ -25,13 +25,10 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
           </button>
 
           {userType !== 'vendor' && (
-            <div className="hidden lg:block">
-              <div className="leading-tight">
-                <h1 className="text-2xl font-bold text-gray-900">IQLIQ</h1>
-                <p className="text-sm text-gray-600">
-                  {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Vendor Dashboard'}
-                </p>
-              </div>
+            <div className="hidden lg:block min-w-0">
+              <h1 className="text-xl font-semibold text-gray-900 tracking-tight truncate">
+                {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Dashboard'}
+              </h1>
             </div>
           )}
         </div>

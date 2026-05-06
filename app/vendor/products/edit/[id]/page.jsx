@@ -16,9 +16,16 @@ function normalizeProductImagesJson(images) {
     const img = images[i];
     if (typeof img === 'string' && img.trim()) {
       out.push({ url: img.trim(), is_primary: out.length === 0, alt_text: 'Product image' });
-    } else if (img && typeof img === 'object' && img.url) {
+    } else if (img && typeof img === 'object') {
+      const resolvedUrl =
+        (typeof img.url === 'string' && img.url.trim()) ||
+        (typeof img.image === 'string' && img.image.trim()) ||
+        (typeof img.src === 'string' && img.src.trim()) ||
+        (typeof img.location === 'string' && img.location.trim()) ||
+        '';
+      if (!resolvedUrl) continue;
       out.push({
-        url: img.url,
+        url: resolvedUrl,
         is_primary: Boolean(img.is_primary),
         alt_text: img.alt_text || 'Product image',
       });
@@ -125,6 +132,10 @@ export default function EditProductPage() {
       }
 
       setRawProduct(product);
+      const vatEnabledFromApi =
+        product.price_includes_vat !== undefined
+          ? Boolean(product.price_includes_vat)
+          : Boolean(product.vat_enabled);
       setFormData({
         title: product.title || '',
         slug: product.slug || '',
@@ -135,7 +146,7 @@ export default function EditProductPage() {
         price: String(product.price ?? ''),
         discount_price: String(product.discount_price ?? ''),
         cost_price: String(product.cost_price ?? ''),
-        vat_enabled: Boolean(product.price_includes_vat),
+        vat_enabled: vatEnabledFromApi,
         vat_percentage: String(product.vat_percentage ?? 5),
         stock_quantity: String(product.stock_quantity ?? 0),
         min_stock_level: String(product.min_stock_level ?? ''),
@@ -321,6 +332,7 @@ export default function EditProductPage() {
         discount_price: formData.discount_price ? Number(formData.discount_price) : undefined,
         cost_price: formData.cost_price ? Number(formData.cost_price) : undefined,
         vat_percentage: Math.min(100, Math.max(0, parseFloat(formData.vat_percentage) || 5)),
+        vat_enabled: Boolean(formData.vat_enabled),
         price_includes_vat: Boolean(formData.vat_enabled),
         stock_quantity: Number(formData.stock_quantity),
         min_stock_level: formData.min_stock_level ? Number(formData.min_stock_level) : undefined,
@@ -712,4 +724,3 @@ export default function EditProductPage() {
     </div>
   );
 }
-
