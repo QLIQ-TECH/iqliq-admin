@@ -325,7 +325,7 @@ export const AuthProvider = ({ children }) => {
       
       // Redirect to login page
       if (typeof window !== 'undefined') {
-        window.location.href = '/onboarding/login';
+        window.location.href = '/login';
       }
     }
   };
