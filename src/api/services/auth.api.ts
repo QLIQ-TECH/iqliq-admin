@@ -29,7 +29,10 @@ export const verifyEmailOtp = async (data: { email: string; otp: number }) => {
 };
 
 export const sendWhatsappOtp = async (data: { phone: string }) => {
-  return http.post('message', '/api/otp/send', data);
+  return http.post('message', '/api/otp/send', {
+    ...data,
+    channel: 'whatsapp',
+  });
 };
 
 export const verifyWhatsappOtp = async (data: { phone: string; otp: number }) => {
