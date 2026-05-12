@@ -19,7 +19,16 @@ const normalizeAuthServiceUrl = () => {
 
 export const AuthBaseURL = normalizeAuthServiceUrl();
 export const AmpBaseURL = process.env.NEXT_PUBLIC_AMP_SERVICE_URL;
-export const MessageBaseUrl = process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL;
+const normalizeMessageServiceUrl = () => {
+  const messageServiceUrl = process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL;
+  if (!messageServiceUrl) return undefined;
+
+  // Convert ".../api" style URL to service root so route paths
+  // like "/api/otp/send" are not duplicated.
+  return messageServiceUrl.replace(/\/api\/?$/, '');
+};
+
+export const MessageBaseUrl = normalizeMessageServiceUrl();
 
 
 const serviceBaseUrls = {
