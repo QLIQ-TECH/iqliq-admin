@@ -4,6 +4,7 @@ import type {
   SignUpRequest,
   SignUpResponse,
 } from '@/types/brand';
+import axios from 'axios';
 import { http } from '../client';
 import type { ResetPasswordRequest, ResetPasswordResponse } from '@/lib/types';
 
@@ -20,12 +21,27 @@ export const loginApi = async (data: LoginRequest): Promise<LoginResponse> => {
   return http.post<LoginResponse>('auth', '/api/auth/login', data);
 };
 
+const getEmailOtpBaseUrl = () =>
+  process.env.NEXT_PUBLIC_EMAIL_OTP_BASE_URL ||
+  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ||
+  'https://auth.qliq.ae';
+
 export const sendEmailOtp = async (data: { email: string }) => {
-  return http.post('auth', '/api/otp/send-otp', data);
+  const res = await axios.post(
+    `${getEmailOtpBaseUrl()}/api/otp/send-otp`,
+    data,
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  return res.data;
 };
 
 export const verifyEmailOtp = async (data: { email: string; otp: number }) => {
-  return http.post('auth', '/api/otp/verify-otp', data);
+  const res = await axios.post(
+    `${getEmailOtpBaseUrl()}/api/otp/verify-otp`,
+    data,
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  return res.data;
 };
 
 export const sendWhatsappOtp = async (data: { phone: string }) => {
