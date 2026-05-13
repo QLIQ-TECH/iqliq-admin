@@ -87,7 +87,16 @@ export default function VendorProductsPage() {
         limit: pagination.limit || 10,
       };
       if (search) query.search = search;
-      if (statusFilter) query.status = statusFilter;
+      if (statusFilter) {
+        // Pending is an approval workflow state, not lifecycle status.
+        if (statusFilter === 'pending') {
+          query.approval_status = 'pending';
+          delete query.status;
+        } else {
+          query.status = statusFilter;
+          query.approval_status = 'all';
+        }
+      }
       if (categoryLevel && categoryId) query[categoryLevel] = categoryId;
 
       const response = await productService.getAllProducts(query);
