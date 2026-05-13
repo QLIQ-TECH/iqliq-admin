@@ -115,7 +115,10 @@ const createClient = (service: ServiceName): AxiosInstance => {
 
         const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
         if (!refreshToken) {
-          if (typeof window !== "undefined") localStorage.clear();
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+          }
           // window.location.href = "/login";
           return Promise.reject(error);
         }
@@ -138,7 +141,10 @@ const createClient = (service: ServiceName): AxiosInstance => {
           const refreshError =
             err instanceof Error ? err : new Error("Token refresh failed");
           processQueue(refreshError, null);
-          if (typeof window !== "undefined") localStorage.clear();
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+          }
           // window.location.href = "/login";
           return Promise.reject(err);
         } finally {
