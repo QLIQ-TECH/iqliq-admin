@@ -23,7 +23,7 @@ const ForgotPasswordForm = () => {
             toast.success("Please check your email for a reset link. Click the link to change your password.");
             form.reset();
             setTimeout(() => {
-                router.push("/onboarding/login");
+                router.push("/login");
             }, 1500);
         }
         catch (err) {
