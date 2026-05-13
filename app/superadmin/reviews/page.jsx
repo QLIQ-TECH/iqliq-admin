@@ -636,7 +636,7 @@ const ReviewsPage = () => {
                           </div>
                           <div>
                             <div className="text-sm font-medium text-gray-900">
-                              {review.customerName || review.title || review.userId || 'Anonymous'}
+                              {review.customerName || review.userId || 'Anonymous'}
                             </div>
                             <div className="text-xs text-gray-500">
                               {review.customerEmail || 'Email: N/A'}

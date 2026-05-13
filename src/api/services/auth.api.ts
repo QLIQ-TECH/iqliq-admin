@@ -24,7 +24,6 @@ export const loginApi = async (data: LoginRequest): Promise<LoginResponse> => {
 const getEmailOtpBaseUrl = () => {
   const rawBaseUrl =
     process.env.NEXT_PUBLIC_EMAIL_OTP_BASE_URL ||
-    process.env.NEXT_PUBLIC_AUTH_API_URL ||
     'https://auth.qliq.ae';
 
   return rawBaseUrl
