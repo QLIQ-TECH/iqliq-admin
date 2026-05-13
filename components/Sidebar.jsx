@@ -398,11 +398,6 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) 
       href: '/vendor/reviews' 
     },
     { 
-      icon: LifeBuoy, 
-      label: 'Support', 
-      href: '/vendor/support' 
-    },
-    { 
       icon: Settings, 
       label: 'Settings', 
       href: '/vendor/settings' 

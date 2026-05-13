@@ -317,7 +317,7 @@ export default function VendorInventoryPage() {
         onClick={(e) => {
           e.stopPropagation();
           // View product details
-          router.push(`/vendor/products/${row._id}`);
+          router.push(`/vendor/products/edit/${row._id}`);
         }}
         className="p-2 text-green-600 hover:bg-green-50 rounded"
         title="View Product"

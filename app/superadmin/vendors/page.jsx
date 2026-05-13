@@ -16,6 +16,7 @@ export default function VendorsPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [vendors, setVendors] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -293,6 +294,10 @@ export default function VendorsPage() {
     );
   }
 
+  const filteredVendors = statusFilter === 'all'
+    ? vendors
+    : vendors.filter((v) => String(v?.status || '').toLowerCase() === statusFilter);
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar 
@@ -344,8 +349,26 @@ export default function VendorsPage() {
           </div>
 
           {/* Vendors Table */}
+          <div className="bg-white rounded-lg shadow mb-4 p-4 flex items-center justify-end gap-3">
+            <label className="text-sm font-medium text-gray-700" htmlFor="vendor-status-filter">
+              Filter by Status
+            </label>
+            <select
+              id="vendor-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="suspended">Suspended</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+
           <DataTable
-            data={vendors}
+            data={filteredVendors}
             columns={columns}
             actions={actions}
             searchable={true}

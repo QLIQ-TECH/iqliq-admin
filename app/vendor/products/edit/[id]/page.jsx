@@ -37,6 +37,15 @@ function normalizeProductImagesJson(images) {
   return JSON.stringify(out, null, 2);
 }
 
+function parseSafeStockQuantity(value) {
+  const normalized = String(value ?? '').trim();
+  // Allow only plain whole numbers for stock quantity.
+  if (!/^\d+$/.test(normalized)) return null;
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
 export default function EditProductPage() {
   const params = useParams();
   const rawId = params?.id;
@@ -266,11 +275,12 @@ export default function EditProductPage() {
 
   const validateForm = () => {
     const newErrors = {};
+    const stockQuantity = parseSafeStockQuantity(formData.stock_quantity);
     
     if (!formData.title.trim()) newErrors.title = 'Product title is required';
     if (!formData.description.trim()) newErrors.description = 'Product description is required';
     if (!formData.price || formData.price <= 0) newErrors.price = 'Valid price is required';
-    if (!formData.stock_quantity || formData.stock_quantity < 0) newErrors.stock_quantity = 'Valid stock quantity is required';
+    if (stockQuantity === null) newErrors.stock_quantity = 'Stock quantity must be a whole number (0 or greater)';
     
     // Validate JSON fields
     try {
@@ -305,6 +315,16 @@ export default function EditProductPage() {
     
     try {
       setSaving(true);
+      const stockQuantity = parseSafeStockQuantity(formData.stock_quantity);
+      if (stockQuantity === null) {
+        setErrors((prev) => ({
+          ...prev,
+          stock_quantity: 'Stock quantity must be a whole number (0 or greater)',
+        }));
+        alert('Please enter a valid stock quantity');
+        setSaving(false);
+        return;
+      }
       let images = [];
       let specifications = {};
       let attributes = {};
@@ -334,7 +354,7 @@ export default function EditProductPage() {
         vat_percentage: Math.min(100, Math.max(0, parseFloat(formData.vat_percentage) || 5)),
         vat_enabled: Boolean(formData.vat_enabled),
         price_includes_vat: Boolean(formData.vat_enabled),
-        stock_quantity: Number(formData.stock_quantity),
+        stock_quantity: stockQuantity,
         min_stock_level: formData.min_stock_level ? Number(formData.min_stock_level) : undefined,
         status: formData.status,
         approval_status: formData.approval_status,
@@ -515,6 +535,9 @@ export default function EditProductPage() {
                     name="stock_quantity" 
                     type="number" 
                     min="0" 
+                    step="1"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={formData.stock_quantity} 
                     onChange={handleChange} 
                     required 
