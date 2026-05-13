@@ -21,32 +21,12 @@ export const loginApi = async (data: LoginRequest): Promise<LoginResponse> => {
   return http.post<LoginResponse>('auth', '/api/auth/login', data);
 };
 
-const getEmailOtpBaseUrl = () => {
-  const rawBaseUrl =
-    process.env.NEXT_PUBLIC_EMAIL_OTP_BASE_URL ||
-    'https://auth.qliq.ae';
-
-  return rawBaseUrl
-    .replace(/\/api\/auth\/?$/, '')
-    .replace(/\/$/, '');
-};
-
 export const sendEmailOtp = async (data: { email: string }) => {
-  const res = await axios.post(
-    `${getEmailOtpBaseUrl()}/api/otp/send-otp`,
-    data,
-    { headers: { 'Content-Type': 'application/json' } }
-  );
-  return res.data;
+  return http.post('qliqAuth', '/api/otp/send-otp', data);
 };
 
 export const verifyEmailOtp = async (data: { email: string; otp: number }) => {
-  const res = await axios.post(
-    `${getEmailOtpBaseUrl()}/api/otp/verify-otp`,
-    data,
-    { headers: { 'Content-Type': 'application/json' } }
-  );
-  return res.data;
+  return http.post('qliqAuth', '/api/otp/verify-otp', data);
 };
 
 export const sendWhatsappOtp = async (data: { phone: string }) => {
@@ -61,7 +41,7 @@ export const verifyWhatsappOtp = async (data: { phone: string; otp: number }) =>
 };
 
 export const signUpApi = async ( data: SignUpRequest) => {
-  return http.post<SignUpResponse>('auth', '/api/auth/signup', data);
+  return http.post<SignUpResponse>('qliqAuth', '/api/auth/signup', data);
 };
 
 
