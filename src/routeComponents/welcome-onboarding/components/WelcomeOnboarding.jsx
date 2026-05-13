@@ -22,7 +22,18 @@ const WelcomeOnboardingGrowBusiness = () => {
     });
     const onSubmit = async (data) => {
         if (data.agree) {
-            await postOnboarding(onboardingData);
+            let authUserId = '';
+            try {
+                const savedUser = localStorage.getItem('qliq-admin-user');
+                if (savedUser) {
+                    const parsedUser = JSON.parse(savedUser);
+                    authUserId = parsedUser.cognitoUserId || parsedUser.id || '';
+                }
+            } catch {}
+            if (!authUserId) {
+                authUserId = localStorage.getItem('id') || '';
+            }
+            await postOnboarding({ ...onboardingData, authUserId });
             reset();
             localStorage.setItem("onboarding_completed", "true");
             try {
