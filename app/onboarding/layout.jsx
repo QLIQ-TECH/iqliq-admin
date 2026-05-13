@@ -12,7 +12,7 @@ export default function OnboardingLayout({ children }) {
     const publicPaths = ['/onboarding/sign-up', '/onboarding/login','/login']
     if (publicPaths.includes(pathname)) return
 
-    const token = localStorage.getItem('access_token')
+    const token = localStorage.getItem('qliq-admin-access-token') || localStorage.getItem('access_token')
     const onboardingCompleted = localStorage.getItem('onboarding_completed')
     if (token && onboardingCompleted === 'true') {
       try {
