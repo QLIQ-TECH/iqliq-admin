@@ -43,7 +43,9 @@ const VendorReviewsPage = () => {
       console.log('🔍 Filters:', filters);
       
       // Fetch reviews for products that belong to this vendor only
+      const vendorId = user?.vendorId || user?.id;
       const response = await reviewService.getVendorReviews({
+        vendorId,
         ...filters
       });
       
@@ -102,6 +104,38 @@ const VendorReviewsPage = () => {
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const handleReviewLike = async (reviewId) => {
+    try {
+      console.log('Liking review:', reviewId);
+      // Note: This would need a proper API endpoint for liking reviews
+      // For now, we'll just log the action
+      console.log('Review liked successfully');
+    } catch (error) {
+      console.error('Error liking review:', error);
+    }
+  };
+
+  const handleReviewDislike = async (reviewId) => {
+    try {
+      console.log('Disliking review:', reviewId);
+      // Note: This would need a proper API endpoint for disliking reviews
+      // For now, we'll just log the action
+      console.log('Review disliked successfully');
+    } catch (error) {
+      console.error('Error disliking review:', error);
+    }
+  };
+
+  const handleModeration = async (reviewId, status) => {
+    try {
+      await reviewService.updateProductReview(reviewId, { status });
+      await fetchVendorReviews();
+      await fetchReviewStats();
+    } catch (error) {
+      console.error(`Error setting review status to ${status}:`, error);
+    }
   };
 
   if (loading) {
@@ -313,11 +347,19 @@ const VendorReviewsPage = () => {
 
                       <div className="flex items-center space-x-4">
                         <div className="flex items-center space-x-2">
-                          <button className="flex items-center space-x-1 text-gray-600 hover:text-blue-600">
+                          <button 
+                            onClick={() => handleReviewLike(review._id || review.id)}
+                            className="flex items-center space-x-1 text-gray-600 hover:text-blue-600 transition-colors"
+                            title="Like this review"
+                          >
                             <ThumbsUp className="w-4 h-4" />
                             <span className="text-sm">{review.likes || 0}</span>
                           </button>
-                          <button className="flex items-center space-x-1 text-gray-600 hover:text-red-600">
+                          <button 
+                            onClick={() => handleReviewDislike(review._id || review.id)}
+                            className="flex items-center space-x-1 text-gray-600 hover:text-red-600 transition-colors"
+                            title="Dislike this review"
+                          >
                             <ThumbsDown className="w-4 h-4" />
                             <span className="text-sm">{review.dislikes || 0}</span>
                           </button>
@@ -332,7 +374,7 @@ const VendorReviewsPage = () => {
                       </div>
                     </div>
 
-                    <div className="ml-4">
+                    <div className="ml-4 flex flex-col items-end gap-2">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         review.status === 'approved' ? 'bg-green-100 text-green-800' :
                         review.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
@@ -340,6 +382,22 @@ const VendorReviewsPage = () => {
                       }`}>
                         {review.status}
                       </span>
+                      {review.status === 'pending' && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200"
+                            onClick={() => handleModeration(review._id || review.id, 'approved')}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
+                            onClick={() => handleModeration(review._id || review.id, 'rejected')}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 

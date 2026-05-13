@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../contexts/AuthContext';
 import Sidebar from '../../../../components/Sidebar';
@@ -45,11 +45,11 @@ function ProductSection({ icon: Icon, title, description, children }) {
   );
 }
 import ImageUpload from '../../../../components/ImageUpload';
-import S3Status from '../../../../components/S3Status';
 import productService from '../../../../lib/services/productService';
 import vendorService from '../../../../lib/services/vendorService';
 import storeService from '../../../../lib/services/storeService';
 import attributeService from '../../../../lib/services/attributeService';
+import { getCustomerFacingPriceParts, formatMoney } from '../../../../lib/utils/customerFacingPrice';
 
 export default function AddProductPage() {
   const { user, isLoading, logout } = useAuth();
@@ -57,7 +57,7 @@ export default function AddProductPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
-  
+
   // Dropdown data
   const [categories, setCategories] = useState([]);
   const [level2Categories, setLevel2Categories] = useState([]);
@@ -89,6 +89,8 @@ export default function AddProductPage() {
     price: '',
     discount_price: '',
     cost_price: '',
+    vat_enabled: true,
+    vat_percentage: '5',
     
     // Inventory
     stock_quantity: '',
@@ -142,6 +144,31 @@ export default function AddProductPage() {
   const [nestedAttrKey, setNestedAttrKey] = useState('');
   const [nestedAttrValue, setNestedAttrValue] = useState('');
   
+  // Calculate storefront preview pricing
+  const storefrontPreview = useMemo(() => {
+    const pp = Number.parseFloat(String(formData.price));
+    const dp =
+      formData.discount_price !== undefined &&
+      formData.discount_price !== null &&
+      String(formData.discount_price).trim() !== ''
+        ? Number.parseFloat(String(formData.discount_price))
+        : null;
+    if (!Number.isFinite(pp) || pp <= 0) return null;
+    return getCustomerFacingPriceParts({
+      price: pp,
+      discount_price:
+        dp != null && Number.isFinite(dp) && dp > 0 ? dp : undefined,
+      price_includes_vat: Boolean(formData.vat_enabled),
+      vat_percentage:
+        Number.parseFloat(String(formData.vat_percentage || '5')) || 5,
+    });
+  }, [
+    formData.price,
+    formData.discount_price,
+    formData.vat_enabled,
+    formData.vat_percentage,
+  ]);
+  
   // Store requirement state
   const [showStoreRequired, setShowStoreRequired] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
@@ -160,6 +187,13 @@ export default function AddProductPage() {
       postalCode: ''
     }
   });
+  const [storePreviewState, setStorePreviewState] = useState({ logoValid: null, bannerValid: null });
+
+  const generateBarcode = () => {
+    const stamp = Date.now().toString().slice(-10);
+    const rand = Math.floor(1000 + Math.random() * 9000).toString();
+    return `${stamp}${rand}`;
+  };
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -174,6 +208,13 @@ export default function AddProductPage() {
       fetchDropdownData();
     }
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    // Keep barcode optional in UI, but ensure we always submit a valid generated value.
+    if (!String(formData.barcode || '').trim()) {
+      setFormData((prev) => ({ ...prev, barcode: generateBarcode() }));
+    }
+  }, []);
 
   const fetchDropdownData = async () => {
     try {
@@ -211,7 +252,8 @@ export default function AddProductPage() {
       // Fetch vendor's stores
       try {
         // Validate user ID before making API call
-        if (!user.id) {
+        const ownerId = user.vendorId || user.id;
+        if (!ownerId) {
           console.error('❌ No user ID available for store fetch');
           setStores([]);
           setShowStoreRequired(true);
@@ -220,9 +262,9 @@ export default function AddProductPage() {
         
         // Force cache bypass to get fresh data
         const shouldClearCache = true;
-        const storesRes = await storeService.getStoresByVendor(user.id, shouldClearCache);
+        const storesRes = await storeService.getStoresByVendor(ownerId, shouldClearCache);
         console.log('=== STORE FETCH DEBUG ===');
-        console.log('User ID for store fetch:', user.id);
+        console.log('User ID for store fetch:', ownerId);
         console.log('User ID type:', typeof user.id);
         console.log('User ID length:', user.id?.length);
         console.log('Full user object:', user);
@@ -286,12 +328,12 @@ export default function AddProductPage() {
     try {
       const storeData = {
         ...storeFormData,
-        ownerId: user.id,
+        ownerId: user.vendorId || user.id,
         isActive: true
       };
       
       console.log('Creating store with data:', storeData);
-      console.log('User ID being used:', user.id);
+      console.log('User ID being used:', user.vendorId || user.id);
       
       const response = await storeService.createStore(storeData);
       console.log('Store created response:', response);
@@ -991,10 +1033,16 @@ export default function AddProductPage() {
         price: parseFloat(formData.price),
         discount_price: formData.discount_price ? parseFloat(formData.discount_price) : undefined,
         cost_price: formData.cost_price ? parseFloat(formData.cost_price) : undefined,
+        vat_percentage: Math.min(100, Math.max(0, parseFloat(formData.vat_percentage) || 5)),
+        vat_enabled: Boolean(formData.vat_enabled),
+        price_includes_vat: Boolean(formData.vat_enabled),
         stock_quantity: parseInt(formData.stock_quantity),
         min_stock_level: formData.min_stock_level ? parseInt(formData.min_stock_level) : undefined,
         warranty_period: formData.warranty_period ? parseInt(formData.warranty_period) : undefined
       };
+      if (!String(submitData.barcode ?? '').trim()) {
+        submitData.barcode = generateBarcode();
+      }
       
       await productService.createProduct(submitData);
       alert('Product created successfully!');
@@ -1136,9 +1184,11 @@ export default function AddProductPage() {
                                   src={storeFormData.logo} 
                                   alt="Store Logo Preview" 
                                   className="w-16 h-16 object-cover rounded-lg border border-gray-300"
-                                  onError={(e) => e.target.style.display = 'none'}
+                                  onLoad={() => setStorePreviewState(prev => ({ ...prev, logoValid: true }))}
+                                  onError={() => setStorePreviewState(prev => ({ ...prev, logoValid: false }))}
                                 />
-                                <span className="text-xs text-green-600">✓ Preview loaded</span>
+                                {storePreviewState.logoValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                                {storePreviewState.logoValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
                               </div>
                             )}
                             <p className="text-xs text-gray-500">Enter image URL for your store logo</p>
@@ -1164,9 +1214,11 @@ export default function AddProductPage() {
                                   src={storeFormData.banner} 
                                   alt="Store Banner Preview" 
                                   className="w-full h-24 object-cover rounded-lg border border-gray-300"
-                                  onError={(e) => e.target.style.display = 'none'}
+                                  onLoad={() => setStorePreviewState(prev => ({ ...prev, bannerValid: true }))}
+                                  onError={() => setStorePreviewState(prev => ({ ...prev, bannerValid: false }))}
                                 />
-                                <span className="text-xs text-green-600">✓ Preview loaded</span>
+                                {storePreviewState.bannerValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                                {storePreviewState.bannerValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
                               </div>
                             )}
                             <p className="text-xs text-gray-500">Enter image URL for your store banner</p>
@@ -1478,12 +1530,14 @@ export default function AddProductPage() {
               <ProductSection
                 icon={CircleDollarSign}
                 title="Pricing"
-                description="Set your list price here. Discounts can stay empty—promos and gigs can handle sales separately."
+                description="The ecommerce app shows VAT-inclusive totals. VAT mode decides whether your number is Before VAT or Already includes VAT—see preview below."
               >
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Price <span className="text-red-500">*</span>
+                      {formData.vat_enabled
+                        ? <>Price incl. VAT (AED){' '}<span className="text-red-500">*</span></>
+                        : <>Price before VAT (AED){' '}<span className="text-red-500">*</span></>}
                     </label>
                     <input
                       type="number"
@@ -1535,6 +1589,57 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
+                <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">VAT mode</label>
+                    <select
+                      name="vat_enabled"
+                      value={String(formData.vat_enabled)}
+                      onChange={(e) => setFormData(prev => ({ ...prev, vat_enabled: e.target.value === 'true' }))}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="true">Entered price includes 5% VAT (what shoppers pay)</option>
+                      <option value="false">Entered price excludes VAT (we add 5% for storefront)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">VAT percentage</label>
+                    <input
+                      type="number"
+                      name="vat_percentage"
+                      value={formData.vat_percentage}
+                      onChange={handleInputChange}
+                      step="0.01"
+                      min="0"
+                      disabled={!formData.vat_enabled}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100"
+                    />
+                  </div>
+                </div>
+                {storefrontPreview ? (
+                  <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm">
+                    <p className="font-medium text-slate-800">
+                      Shoppers pay{' '}
+                      <span className="text-emerald-800">{formatMoney(storefrontPreview.display, 'AED ')}</span>
+                      <span className="font-normal text-slate-600"> including VAT</span>
+                    </p>
+                    {storefrontPreview.compareAt != null ? (
+                      <p className="mt-1 text-xs text-slate-600">
+                        Listed compare-at{' '}
+                        <span className="line-through">{formatMoney(storefrontPreview.compareAt, 'AED ')}</span>
+                      </p>
+                    ) : null}
+                    <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+                      {formData.vat_enabled
+                        ? `Your input is VAT-inclusive (${storefrontPreview.vatPct}% already in the figure). The main price in the ecommerce app matches this inclusive total when no discount applies.`
+                        : `Your input excludes VAT · the storefront adds ${storefrontPreview.vatPct}% VAT (same rounding rules as catalog). Eg. ${formatMoney(Number(formData.price) || 0, 'AED ')} entered here shows as ${formatMoney(storefrontPreview.display, 'AED ')} to shoppers.`}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-xs text-slate-500">
+                    Enter a valid price to preview the VAT-inclusive total customers see online.
+                  </p>
+                )}
               </ProductSection>
 
               <ProductSection
@@ -1613,11 +1718,6 @@ export default function AddProductPage() {
                 title="Photos"
                 description="Upload up to five images. The first image (or the one you mark primary) is used in listings. You can mix uploads and image URLs."
               >
-                <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                  <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">Storage status</p>
-                  <S3Status />
-                </div>
-
                 <ImageUpload
                   onImagesChange={(images) => {
                     setUploadedImages(images);
@@ -2025,4 +2125,3 @@ export default function AddProductPage() {
     </div>
   );
 }
-

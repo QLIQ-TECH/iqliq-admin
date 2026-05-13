@@ -7,9 +7,10 @@ import Sidebar from '../../../components/Sidebar';
 import Header from '../../../components/Header';
 import DataTable from '../../../components/shared/DataTable';
 import StatsCard from '../../../components/shared/StatsCard';
-import { Package, Plus, Edit, Trash2 } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Upload } from 'lucide-react';
 import productService from '../../../lib/services/productService';
 import Modal from '../../../components/shared/Modal';
+import { getCustomerFacingPriceParts, formatMoney } from '../../../lib/utils/customerFacingPrice';
 
 export default function VendorProductsPage() {
   const { user, isLoading, logout } = useAuth();
@@ -80,8 +81,7 @@ export default function VendorProductsPage() {
         setTableLoading(true);
       }
       const query = {
-        vendor_id: user.id,
-        vendorId: user.id,
+        vendor_id: user.vendorId || user.id,
         approval_status: 'all',
         page: pageToLoad,
         limit: pagination.limit || 10,
@@ -116,8 +116,7 @@ export default function VendorProductsPage() {
       setStatsLoading(true);
       // Get all products for stats calculation (no pagination)
       const statsQuery = {
-        vendor_id: user.id,
-        vendorId: user.id,
+        vendor_id: user.vendorId || user.id,
         approval_status: 'all',
         limit: 1000, // Get a large number to get all products for stats
       };
@@ -171,9 +170,24 @@ export default function VendorProductsPage() {
     },
     { 
       key: 'price', 
-      label: 'Price', 
+      label: 'Store price (incl. VAT)', 
       sortable: true,
-      render: (value) => `$${Number(value || 0).toFixed(2)}`
+      render: (_value, row) => {
+        const { display, compareAt, includesVat, vatPct } = getCustomerFacingPriceParts(row);
+        return (
+          <div>
+            <div className="font-medium text-gray-900">
+              {formatMoney(display)}
+              {compareAt ? (
+                <span className="ml-2 text-xs text-gray-400 line-through">{formatMoney(compareAt)}</span>
+              ) : null}
+            </div>
+            <div className="text-xs text-gray-500">
+              {includesVat ? 'Matches storefront' : `+ ${vatPct}% VAT`}
+            </div>
+          </div>
+        );
+      }
     },
     { 
       key: 'stock_quantity', 
@@ -270,13 +284,22 @@ export default function VendorProductsPage() {
               <h1 className="text-2xl font-bold text-gray-900">My Products</h1>
               <p className="text-gray-600 mt-1">Manage your product catalog</p>
             </div>
-            <button
-              onClick={() => router.push('/vendor/products/add')}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Add Product</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => router.push('/vendor/products/bulk')}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Upload className="w-5 h-5" />
+                <span>Bulk Upload</span>
+              </button>
+              <button
+                onClick={() => router.push('/vendor/products/add')}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Add Product</span>
+              </button>
+            </div>
           </div>
 
           {/* Filters */}
@@ -426,11 +449,17 @@ export default function VendorProductsPage() {
 }
 
 function ProductDetailsModal({ open, onClose, product }) {
-  if (!open) return null;
-  if (!product) return null;
-  const images = Array.isArray(product.images) ? product.images : [];
-  const normalizedImages = images.map((img) => typeof img === 'string' ? { url: img } : img);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  useEffect(() => {
+    if (open) setSelectedIndex(0);
+  }, [open, product?._id]);
+
+  if (!open || !product) return null;
+
+  const priceParts = getCustomerFacingPriceParts(product);
+  const images = Array.isArray(product.images) ? product.images : [];
+  const normalizedImages = images.map((img) => (typeof img === 'string' ? { url: img } : img));
   const current = normalizedImages[selectedIndex];
 
   return (
@@ -482,11 +511,22 @@ function ProductDetailsModal({ open, onClose, product }) {
 
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <div className="text-gray-500">Price</div>
+              <div className="text-gray-500">Storefront price (incl. VAT)</div>
+              <div className="font-medium">
+                {formatMoney(priceParts.display)}
+                {priceParts.compareAt ? (
+                  <span className="ml-2 text-xs text-gray-400 line-through">
+                    {formatMoney(priceParts.compareAt)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-500">Base price (catalog)</div>
               <div className="font-medium">${Number(product.price || 0).toFixed(2)}</div>
             </div>
             <div>
-              <div className="text-gray-500">Discount Price</div>
+              <div className="text-gray-500">Discount (base)</div>
               <div className="font-medium">${Number(product.discount_price || 0).toFixed(2)}</div>
             </div>
             <div>

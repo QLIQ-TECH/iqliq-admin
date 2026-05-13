@@ -1,8 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import MetricCard from './MetricCard';
 import CreateGigDrawer from './createGig/CreateGigDrawer';
 import { useAuth } from '../contexts/AuthContext';
 import productService from '../lib/services/productService';
+import orderService from '../lib/services/orderService';
+import notificationService from '../lib/services/notificationService';
+import { extractOrdersListFromApiResponse, normalizeOrderStatus } from '../lib/utils/vendorOrderUtils';
 import { 
   ShoppingBag, 
   DollarSign, 
@@ -12,18 +16,28 @@ import {
   Users,
   CreditCard,
   BarChart3,
+  Bell,
 } from 'lucide-react';
 
 const VendorDashboard = () => {
   const { user } = useAuth();
+  const router = useRouter();
   const [isCreateGigDrawerOpen, setIsCreateGigDrawerOpen] = useState(false);
   const [products, setProducts] = useState([]);
   const [isProductsLoading, setIsProductsLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const socketRef = useRef(null);
+
+  const vendorKey = user?.vendorId || user?.id;
 
   useEffect(() => {
     const fetchVendorProducts = async () => {
-      if (!user?.id) {
+      if (!vendorKey) {
         setProducts([]);
         setIsProductsLoading(false);
         return;
@@ -31,8 +45,7 @@ const VendorDashboard = () => {
       try {
         setIsProductsLoading(true);
         const response = await productService.getAllProducts({
-          vendor_id: user.id,
-          vendorId: user.id,
+          vendor_id: vendorKey,
           approval_status: 'all',
           limit: 200,
         });
@@ -49,7 +62,140 @@ const VendorDashboard = () => {
     };
 
     fetchVendorProducts();
-  }, [user?.id]);
+  }, [vendorKey]);
+
+  useEffect(() => {
+    const scrollToNotifications = () => {
+      if (typeof window === 'undefined') return;
+      if (window.location.hash !== '#notifications') return;
+      const section = document.getElementById('vendor-notifications');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+
+    scrollToNotifications();
+    window.addEventListener('hashchange', scrollToNotifications);
+    return () => window.removeEventListener('hashchange', scrollToNotifications);
+  }, []);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (!vendorKey) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
+      try {
+        setNotificationsLoading(true);
+        const response = await notificationService.getUserNotifications({ limit: 20 });
+        const list = Array.isArray(response?.data) ? response.data : [];
+        setNotifications(list);
+        setUnreadCount(Number(response?.unreadCount || 0));
+      } catch (error) {
+        console.error('Error fetching vendor notifications:', error);
+        setNotifications([]);
+        setUnreadCount(0);
+      } finally {
+        setNotificationsLoading(false);
+      }
+    };
+
+    fetchNotifications();
+  }, [vendorKey]);
+
+  useEffect(() => {
+    let mounted = true;
+    const connectSocket = async () => {
+      if (!vendorKey) return;
+      try {
+        const [{ io }, apiClientModule] = await Promise.all([
+          import('socket.io-client'),
+          import('../lib/apiClient'),
+        ]);
+        if (!mounted) return;
+
+        const token = apiClientModule?.authApi?.getAuthToken?.();
+        const socketUrl =
+          process.env.NEXT_PUBLIC_ADMIN_WS_URL ||
+          process.env.NEXT_PUBLIC_ADMIN_API_URL?.replace(/\/api$/, '') ||
+          'http://localhost:8009';
+
+        const socket = io(socketUrl, {
+          path: '/socket.io',
+          transports: ['websocket', 'polling'],
+          query: { userId: vendorKey },
+          auth: token ? { token } : undefined,
+        });
+
+        socket.on('connect', () => {
+          socket.emit('join', { userId: vendorKey });
+        });
+
+        socket.on('notification:new', (payload) => {
+          const incoming = payload?.notification;
+          if (!incoming || !mounted) return;
+          setNotifications((prev) => {
+            const exists = prev.some((n) => String(n._id) === String(incoming._id));
+            if (exists) return prev;
+            return [incoming, ...prev].slice(0, 20);
+          });
+          setUnreadCount((prev) => prev + 1);
+        });
+
+        socketRef.current = socket;
+      } catch (error) {
+        console.error('Failed to connect vendor notification socket:', error);
+      }
+    };
+
+    connectSocket();
+
+    return () => {
+      mounted = false;
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, [vendorKey]);
+
+  useEffect(() => {
+    const loadRecent = async () => {
+      if (!vendorKey) {
+        setRecentOrders([]);
+        return;
+      }
+      try {
+        setOrdersLoading(true);
+        const res = await orderService.getVendorOrders(vendorKey, { page: 1, limit: 8 });
+        const list = extractOrdersListFromApiResponse(res);
+        setRecentOrders(Array.isArray(list) ? list.slice(0, 5) : []);
+      } catch (e) {
+        console.error('Error loading recent orders:', e);
+        setRecentOrders([]);
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+    loadRecent();
+  }, [vendorKey]);
+
+  const recentOrderStatusColor = (status) => {
+    const s = normalizeOrderStatus({ status });
+    if (s === 'delivered') return 'bg-green-500';
+    if (s === 'shipped') return 'bg-blue-500';
+    if (s === 'cancelled' || s === 'refunded') return 'bg-red-500';
+    if (s === 'processing' || s === 'accepted') return 'bg-yellow-500';
+    return 'bg-amber-500';
+  };
+
+  const formatRecentOrderTotal = (order) => {
+    const cur = order?.currency || 'USD';
+    const sym = cur === 'AED' ? 'AED ' : cur === 'EUR' ? '€' : '$';
+    const n = Number(order?.totalAmount ?? order?.total ?? 0);
+    return `${sym}${n.toFixed(2)}`;
+  };
 
   const getMappedStatus = (product) => {
     const approval = String(product?.approval_status || '').toLowerCase();
@@ -99,6 +245,32 @@ const VendorDashboard = () => {
     return styles[mappedStatus] || styles.unknown;
   };
 
+  const handleOpenNetworks = () => {
+    // Open vendor downline / qliqers page.
+    router.push('/vendor/iqliqers');
+  };
+
+  const handleNotificationClick = async (notification) => {
+    try {
+      if (!notification?.isRead && notification?._id) {
+        await notificationService.markAsRead(notification._id);
+        setNotifications((prev) =>
+          prev.map((n) => String(n._id) === String(notification._id) ? { ...n, isRead: true } : n)
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      }
+    } catch (error) {
+      console.error('Failed to mark notification read:', error);
+    }
+
+    const targetUrl =
+      notification?.actionUrl ||
+      (notification?.metadata?.productId ? `/vendor/products/edit/${notification.metadata.productId}` : null);
+    if (targetUrl) {
+      router.push(targetUrl);
+    }
+  };
+
   return (
     <div className="space-y-8 relative">
       <CreateGigDrawer
@@ -106,7 +278,7 @@ const VendorDashboard = () => {
         onClose={() => setIsCreateGigDrawerOpen(false)}
       />
 
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div id="vendor-notifications" className="bg-white rounded-lg border border-gray-200 p-6">
         <h3 className="text-xl font-bold text-gray-900 mb-4">My Products Status Overview</h3>
 
         <div className="flex flex-wrap gap-2 mb-4">
@@ -178,14 +350,14 @@ const VendorDashboard = () => {
         </div>
       </div>
 
-      {/* Welcome Banner */}
+      {/* Quick actions */}
       <div className="bg-blue-600 rounded-lg p-6 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-2xl font-bold mb-2">Good Morning!</h2>
-            <p className="text-blue-100">Welcome to your Vendor Dashboard</p>
+            <h2 className="text-xl font-bold">Quick actions</h2>
+            <p className="text-blue-100 text-sm mt-1">Gigs, networks, and onboarding</p>
           </div>
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap gap-3">
             <button
               className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors"
               onClick={() => setIsCreateGigDrawerOpen(true)}
@@ -193,14 +365,61 @@ const VendorDashboard = () => {
             >
               + Create Gigs
             </button>
-            <button className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors">
+            <button
+              type="button"
+              onClick={handleOpenNetworks}
+              className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors"
+            >
               My Networks
-            </button>
-            <button className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors">
-              Launch Tour
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-blue-600" />
+            Notifications
+          </h3>
+          <span className="text-sm text-gray-500">
+            {unreadCount} unread
+          </span>
+        </div>
+        {notificationsLoading ? (
+          <p className="text-sm text-gray-500">Loading notifications...</p>
+        ) : notifications.length === 0 ? (
+          <p className="text-sm text-gray-500">No notifications yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {notifications.map((notification) => (
+              <button
+                key={notification._id}
+                type="button"
+                onClick={() => handleNotificationClick(notification)}
+                className={`w-full text-left border rounded-lg p-3 transition-colors ${
+                  notification.isRead
+                    ? 'border-gray-200 bg-white hover:bg-gray-50'
+                    : 'border-blue-200 bg-blue-50 hover:bg-blue-100'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{notification.title}</p>
+                    <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                  </div>
+                  {!notification.isRead && (
+                    <span className="w-2 h-2 rounded-full bg-blue-600 mt-2 shrink-0"></span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  {notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ''}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Account Health Section */}
@@ -253,7 +472,7 @@ const VendorDashboard = () => {
       {/* Global Snapshot Section */}
       <div>
         <h3 className="text-xl font-bold text-gray-900 mb-4">Global Snapshot</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="Sales"
             value="AED 0.0"
@@ -287,7 +506,11 @@ const VendorDashboard = () => {
             trendValue="+1"
           />
         </div>
-        
+      </div>
+
+      {/* Vendor Tools Section */}
+      <div>
+        <h3 className="text-xl font-bold text-gray-900 mb-4">Vendor Tools & Assets</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard
             title="My Gigs"
@@ -326,62 +549,63 @@ const VendorDashboard = () => {
 
       {/* Recent Orders */}
       <div>
-        <h3 className="text-xl font-bold text-gray-900 mb-4">Recent Orders</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-900">Recent Orders</h3>
+          <button
+            type="button"
+            onClick={() => router.push('/vendor/orders')}
+            className="text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            View all
+          </button>
+        </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12345</span>
-                  <p className="text-xs text-gray-500">Customer: John Doe</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 150.00</span>
-                <p className="text-xs text-gray-500">Completed</p>
-              </div>
+          {ordersLoading ? (
+            <div className="animate-pulse space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 bg-gray-100 rounded" />
+              ))}
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12344</span>
-                  <p className="text-xs text-gray-500">Customer: Jane Smith</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 89.50</span>
-                <p className="text-xs text-gray-500">Processing</p>
-              </div>
+          ) : recentOrders.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No orders yet. When customers buy your products, they will appear here.</p>
+          ) : (
+            <div className="space-y-4">
+              {recentOrders.map((order) => {
+                const id = order._id || order.id;
+                const label = order.orderNumber || (id ? String(id).slice(-8) : '—');
+                const customer = order.customer?.name
+                  || order.shippingAddress?.fullName
+                  || 'Customer';
+                const status = normalizeOrderStatus(order);
+                return (
+                  <button
+                    key={id || label}
+                    type="button"
+                    onClick={() => id && router.push(`/vendor/orders/${id}`)}
+                    className="w-full flex items-center justify-between py-3 border-b border-gray-100 last:border-0 text-left hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${recentOrderStatusColor(status)}`} />
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-gray-900 block truncate">
+                          Order #{label}
+                        </span>
+                        <p className="text-xs text-gray-500 truncate">
+                          {customer}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <span className="text-sm font-medium text-gray-900 block">
+                        {formatRecentOrderTotal(order)}
+                      </span>
+                      <p className="text-xs text-gray-500 capitalize">{status}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12343</span>
-                  <p className="text-xs text-gray-500">Customer: Mike Johnson</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 245.00</span>
-                <p className="text-xs text-gray-500">Shipped</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-3">
-              <div className="flex items-center space-x-3">
-                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Order #12342</span>
-                  <p className="text-xs text-gray-500">Customer: Sarah Wilson</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-900">AED 75.00</span>
-                <p className="text-xs text-gray-500">Cancelled</p>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

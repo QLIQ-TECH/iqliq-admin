@@ -156,6 +156,7 @@ const SignUpForm = ({ referralCode }) => {
     try {
       const response = await signUpApi(data);
       toast.success('Account created successfully');
+      localStorage.removeItem('onboarding_completed');
       localStorage.setItem('access_token', response.data.tokens.accessToken);
       localStorage.setItem('refresh_token', response.data.tokens.refreshToken);
       localStorage.setItem('role', response.data.user.role);

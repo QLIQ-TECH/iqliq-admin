@@ -41,6 +41,16 @@ export default function OrdersPage() {
     revenue: 0
   });
 
+  const extractOrdersFromResponse = (response) => {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.data?.orders)) return response.data.orders;
+    if (Array.isArray(response?.orders)) return response.orders;
+    if (Array.isArray(response?.data?.data?.orders)) return response.data.data.orders;
+    if (Array.isArray(response?.data?.data)) return response.data.data;
+    return [];
+  };
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.push('/login');
@@ -149,7 +159,7 @@ export default function OrdersPage() {
     try {
       setLoading(true);
       const response = await orderService.getAllOrders();
-      const ordersData = response.data || [];
+      const ordersData = extractOrdersFromResponse(response);
       setOrders(ordersData);
       setFilteredOrders(ordersData);
       

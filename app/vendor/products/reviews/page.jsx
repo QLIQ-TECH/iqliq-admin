@@ -27,7 +27,7 @@ const VendorProductReviewsPage = () => {
   useEffect(() => {
     console.log('🔍 User object:', user);
     console.log('🔍 User vendorId:', user?.vendorId);
-    if (user?.vendorId) {
+    if (user?.vendorId || user?.id) {
       fetchVendorReviews();
       fetchReviewStats();
     } else {
@@ -39,11 +39,13 @@ const VendorProductReviewsPage = () => {
   const fetchVendorReviews = async () => {
     try {
       setLoading(true);
-      console.log('🔍 Fetching reviews for vendor:', user?.vendorId);
+      console.log('🔍 Fetching reviews for vendor:', user?.vendorId || user?.id);
       console.log('🔍 Filters:', filters);
       
       // Fetch reviews for products that belong to this vendor only
+      const vendorId = user?.vendorId || user?.id;
       const response = await reviewService.getVendorReviews({
+        vendorId,
         ...filters
       });
       
@@ -65,8 +67,9 @@ const VendorProductReviewsPage = () => {
 
   const fetchReviewStats = async () => {
     try {
-      console.log('🔍 Fetching review stats for vendor:', user.vendorId);
-      const response = await reviewService.getVendorReviewStats(user.vendorId);
+      const vendorId = user?.vendorId || user?.id;
+      console.log('🔍 Fetching review stats for vendor:', vendorId);
+      const response = await reviewService.getVendorReviewStats(vendorId);
       console.log('📊 Review stats response:', response);
       const statsData = response?.data || response || {};
       setStats(statsData);

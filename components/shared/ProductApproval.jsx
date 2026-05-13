@@ -19,6 +19,21 @@ export default function ProductApproval() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState([]);
 
+  const getVendorDisplayName = (product) => {
+    if (!product) return 'N/A';
+    if (typeof product.vendorName === 'string' && product.vendorName.trim()) return product.vendorName;
+    if (typeof product.vendor_name === 'string' && product.vendor_name.trim()) return product.vendor_name;
+    if (product.vendor_id && typeof product.vendor_id === 'object') {
+      if (typeof product.vendor_id.name === 'string' && product.vendor_id.name.trim()) return product.vendor_id.name;
+      if (typeof product.vendor_id.businessName === 'string' && product.vendor_id.businessName.trim()) return product.vendor_id.businessName;
+    }
+    if (product.vendor && typeof product.vendor === 'object') {
+      if (typeof product.vendor.name === 'string' && product.vendor.name.trim()) return product.vendor.name;
+      if (typeof product.vendor.businessName === 'string' && product.vendor.businessName.trim()) return product.vendor.businessName;
+    }
+    return 'N/A';
+  };
+
   useEffect(() => {
     fetchProducts();
   }, [filter]);
@@ -560,8 +575,8 @@ export default function ProductApproval() {
                         <p className="text-gray-900 font-medium">{selectedProduct.store_id?.name || 'N/A'}</p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Vendor ID</label>
-                        <p className="text-gray-700 font-mono text-sm">{selectedProduct.vendor_id || 'N/A'}</p>
+                        <label className="block text-sm font-medium text-gray-600 mb-1">Vendor Name</label>
+                        <p className="text-gray-700 text-sm">{getVendorDisplayName(selectedProduct)}</p>
                       </div>
                       {selectedProduct.store_id?.email && (
                         <div>

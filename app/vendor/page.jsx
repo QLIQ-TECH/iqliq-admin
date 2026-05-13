@@ -30,6 +30,16 @@ export default function VendorPage() {
     setSidebarOpen(!sidebarOpen);
   };
 
+  const handleNotificationClick = () => {
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'notifications';
+      const section = document.getElementById('vendor-notifications');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
   // Show loading spinner while checking authentication
   if (isLoading) {
     return (
@@ -57,43 +67,26 @@ export default function VendorPage() {
   // Show Vendor Dashboard
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        onToggle={toggleSidebar} 
+      <Sidebar
+        isOpen={sidebarOpen}
+        onToggle={toggleSidebar}
         userType="vendor"
         onLogout={logout}
+        user={user}
       />
       
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-0">
         <Header 
           onMenuClick={toggleSidebar} 
+          onNotificationClick={handleNotificationClick}
           userType="vendor"
           user={user}
         />
         
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6">
           <div className="mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  IQLIQ Vendor Dashboard
-                </h1>
-                <p className="text-gray-600 mt-1">
-                  Welcome back, {user.name}
-                </p>
-              </div>
-              
-              {/* User Info */}
-              <div className="flex items-center space-x-4">
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                  <p className="text-xs text-gray-500">{user.email}</p>
-                </div>
-                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">{user.avatar}</span>
-                </div>
-              </div>
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-600 mt-1">Products, orders, and account snapshot</p>
           </div>
 
           <VendorDashboard />

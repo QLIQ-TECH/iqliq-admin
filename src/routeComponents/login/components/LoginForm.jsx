@@ -33,18 +33,35 @@ const LoginForm = () => {
     try {
       const result = await login(values.email, values.password);
       const loggedInUser = result?.user;
+      
+      // Debug logging to see the actual user data
+      console.log('🔍 Login Debug - User data:', {
+        role: loggedInUser?.role,
+        onboardingCompleted: loggedInUser?.onboardingCompleted,
+        vendorId: loggedInUser?.vendorId,
+        id: loggedInUser?.id,
+        fullUser: loggedInUser
+      });
+      
       toast.success('Login successful');
+      
       if (loggedInUser?.role === 'superadmin') {
-        redirectToHostApp('/admin');
+        console.log('🚀 Redirecting to superadmin dashboard');
+        redirectToHostApp('/superadmin/user');
         return;
       }
+      
       if (
         loggedInUser?.role === 'vendor' &&
-        loggedInUser.onboardingCompleted === false
+        loggedInUser.onboardingCompleted === false &&
+        !loggedInUser.vendorId // Only redirect to onboarding if no vendorId exists
       ) {
+        console.log('🔄 Redirecting to onboarding - no vendorId found');
         redirectToHostApp('/onboarding/virtual-assitance');
         return;
       }
+      
+      console.log('🏪 Redirecting to vendor dashboard');
       redirectToHostApp('/vendor');
     } catch (err) {
       const axiosError = err;

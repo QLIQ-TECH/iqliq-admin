@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../contexts/AuthContext';
 import Sidebar from '../../../../components/Sidebar';
 import Header from '../../../../components/Header';
 import FormInput from '../../../../components/shared/FormInput';
-import FormSelect from '../../../../components/shared/FormSelect';
 import { Store, Save, Upload, Plus, Eye, Edit, MapPin, Phone, Mail, Star, ShoppingBag, DollarSign, X } from 'lucide-react';
 import vendorProfileService from '../../../../lib/services/vendorProfileService';
 import storeService from '../../../../lib/services/storeService';
@@ -23,6 +23,37 @@ const DEFAULT_BUSINESS_HOURS = {
 
 const DEFAULT_SOCIAL = { facebook: '', twitter: '', instagram: '', linkedin: '' };
 
+// Helper function to safely render any value as a string
+const safeRender = (value, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[Object]';
+    }
+  }
+  return String(value);
+};
+
+/** Avoid React "Objects are not valid as a React child" when API sends nested stats. */
+const displayRating = (value) => {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value.toFixed(1);
+  if (typeof value === 'string' && value.trim() !== '') return value;
+  return '0.0';
+};
+
+const displayCount = (value) => {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  if (typeof value === 'bigint') return Number(value);
+  return 0;
+};
+
 /** Unwrap vendor API payloads (camelCase or snake_case, optional nesting). */
 function extractStoreProfileBody(res) {
   if (!res || typeof res !== 'object') return null;
@@ -36,29 +67,68 @@ function extractStoreProfileBody(res) {
 
 function mapRemoteToStoreForm(src) {
   if (!src || typeof src !== 'object') return null;
-  const bh = src.businessHours || src.business_hours;
-  const sm = src.socialMedia || src.social_media;
+  const root =
+    src.storeProfile ??
+    src.store_profile ??
+    (src.vendorProfile && typeof src.vendorProfile === 'object' ? src.vendorProfile : null) ??
+    src;
+  const s = typeof root === 'object' ? root : src;
+  const bh = s.businessHours || s.business_hours;
+  const sm = s.socialMedia || s.social_media;
   return {
-    storeName: src.storeName ?? src.store_name ?? '',
-    storeDescription: src.storeDescription ?? src.store_description ?? '',
-    storeLogo: src.storeLogo ?? src.store_logo ?? '',
-    storeBanner: src.storeBanner ?? src.store_banner ?? '',
-    storeUrl: src.storeUrl ?? src.store_url ?? '',
+    storeName: s.storeName ?? s.store_name ?? '',
+    storeDescription: s.storeDescription ?? s.store_description ?? '',
+    storeLogo: s.storeLogo ?? s.store_logo ?? '',
+    storeBanner: s.storeBanner ?? s.store_banner ?? '',
+    storeUrl: s.storeUrl ?? s.store_url ?? '',
     address:
-      typeof src.address === 'string'
-        ? src.address
-        : [src.address?.street, src.address?.line1].filter(Boolean).join(', ') ||
-          src.street ||
-          '',
-    city: src.city ?? '',
-    state: src.state ?? '',
-    zipCode: src.zipCode ?? src.zip_code ?? '',
-    country: src.country || 'USA',
-    phone: src.phone ?? '',
-    email: src.email ?? '',
+      typeof s.address === 'string'
+        ? s.address
+        : [s.address?.street, s.address?.line1].filter(Boolean).join(', ') ||
+          (s.street || ''),
+    city: s.city ?? s.address?.city ?? '',
+    state: s.state ?? s.address?.state ?? '',
+    zipCode: s.zipCode ?? s.zip_code ?? s.address?.zipCode ?? s.address?.postalCode ?? '',
+    country: s.country || s.address?.country || 'USA',
+    phone: s.phone ?? '',
+    email: s.email ?? '',
     businessHours: bh && typeof bh === 'object' ? { ...DEFAULT_BUSINESS_HOURS, ...bh } : { ...DEFAULT_BUSINESS_HOURS },
     socialMedia: sm && typeof sm === 'object' ? { ...DEFAULT_SOCIAL, ...sm } : { ...DEFAULT_SOCIAL },
   };
+}
+
+/** Prefer non-empty mapped fields over previous state (avoids wiping form when GET echoes sparse profile). */
+function mergeStoreProfileState(prev, mapped) {
+  if (!mapped) return prev || {};
+  const next = { ...prev };
+  const scalars = [
+    'storeName',
+    'storeDescription',
+    'storeLogo',
+    'storeBanner',
+    'storeUrl',
+    'address',
+    'city',
+    'state',
+    'zipCode',
+    'country',
+    'phone',
+    'email',
+  ];
+  for (const key of scalars) {
+    const v = mapped[key];
+    const str = typeof v === 'string' ? v.trim() : v;
+    if (str !== undefined && str !== null && str !== '') {
+      next[key] = v;
+    }
+  }
+  if (mapped.businessHours && typeof mapped.businessHours === 'object') {
+    next.businessHours = { ...(next.businessHours || {}), ...mapped.businessHours };
+  }
+  if (mapped.socialMedia && typeof mapped.socialMedia === 'object') {
+    next.socialMedia = { ...(next.socialMedia || {}), ...mapped.socialMedia };
+  }
+  return next;
 }
 
 export default function StoreProfilePage() {
@@ -86,7 +156,25 @@ export default function StoreProfilePage() {
   const [stores, setStores] = useState([]);
   const [storesLoading, setStoresLoading] = useState(false);
   const [showCreateStoreModal, setShowCreateStoreModal] = useState(false);
+  const [showEditStoreModal, setShowEditStoreModal] = useState(false);
+  const [editingStoreId, setEditingStoreId] = useState(null);
+  const [isUpdatingStore, setIsUpdatingStore] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
+  const [editStoreData, setEditStoreData] = useState({
+    name: '',
+    description: '',
+    logo: '',
+    banner: '',
+    email: '',
+    phone: '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      country: '',
+      postalCode: ''
+    }
+  });
   const [newStoreData, setNewStoreData] = useState({
     name: '',
     description: '',
@@ -102,6 +190,7 @@ export default function StoreProfilePage() {
       postalCode: ''
     }
   });
+  const [previewState, setPreviewState] = useState({ logoValid: null, bannerValid: null });
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -131,7 +220,7 @@ export default function StoreProfilePage() {
         const mapped = mapRemoteToStoreForm(profileBody);
         if (mapped) {
           console.log('📋 Setting profile data (normalized):', mapped);
-          setFormData((prev) => ({ ...prev, ...mapped }));
+          setFormData((prev) => mergeStoreProfileState(prev, mapped));
         }
       } else {
         console.log('📋 No profile data found or empty response, using defaults');
@@ -174,7 +263,7 @@ export default function StoreProfilePage() {
         storesData = response.stores;
       }
       
-      setStores(storesData);
+      setStores(Array.isArray(storesData) ? storesData.filter((s) => s && typeof s === 'object') : []);
     } catch (error) {
       console.error('❌ Error fetching vendor stores:', error);
       setStores([]);
@@ -185,18 +274,38 @@ export default function StoreProfilePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const snapshotBeforeSave = { ...formData };
     try {
       setSaving(true);
       console.log('🏪 Updating store profile:', formData);
       
-      const response = await vendorProfileService.updateVendorStoreProfile(formData);
+      const payload = {
+        ...formData,
+        store_name: formData.storeName,
+        store_description: formData.storeDescription,
+        store_logo: formData.storeLogo,
+        store_banner: formData.storeBanner,
+        store_url: formData.storeUrl,
+        zip_code: formData.zipCode,
+        business_hours: formData.businessHours,
+        social_media: formData.socialMedia,
+        address: {
+          street: formData.address,
+          city: formData.city,
+          state: formData.state,
+          postalCode: formData.zipCode,
+          country: formData.country,
+        },
+      };
+      const response = await vendorProfileService.updateVendorStoreProfile(payload);
       console.log('✅ Store profile updated:', response);
 
       const updatedBody = extractStoreProfileBody(response);
       if (updatedBody && Object.keys(updatedBody).length > 0) {
         const mapped = mapRemoteToStoreForm(updatedBody);
-        if (mapped) setFormData((prev) => ({ ...prev, ...mapped }));
+        if (mapped) setFormData(mergeStoreProfileState(snapshotBeforeSave, mapped));
       } else {
+        setFormData(snapshotBeforeSave);
         await fetchStoreProfile();
       }
 
@@ -218,25 +327,142 @@ export default function StoreProfilePage() {
     }
   };
 
+  const mapStoreToEditForm = (store) => {
+    const addr =
+      store?.address && typeof store.address === 'object' && !Array.isArray(store.address)
+        ? store.address
+        : {};
+    return {
+      name: store?.name ?? '',
+      description: store?.description ?? '',
+      logo: store?.logo ?? '',
+      banner: store?.banner ?? '',
+      email: store?.email ?? '',
+      phone: store?.phone ?? '',
+      address: {
+        street:
+          addr.street ??
+          (typeof store?.address === 'string' ? store.address : '') ??
+          '',
+        city: addr.city ?? '',
+        state: addr.state ?? '',
+        country: addr.country ?? '',
+        postalCode: addr.postalCode ?? ''
+      }
+    };
+  };
+
+  const openEditStoreModal = (store) => {
+    const id = store?._id || store?.id;
+    if (!id) {
+      alert('Cannot edit: missing store id.');
+      return;
+    }
+    setEditingStoreId(String(id));
+    setEditStoreData(mapStoreToEditForm(store));
+    setShowEditStoreModal(true);
+  };
+
+  const handleEditStoreInputChange = (e) => {
+    const { name, value } = e.target;
+    if (name.startsWith('address.')) {
+      const addressField = name.split('.')[1];
+      setEditStoreData((prev) => ({
+        ...prev,
+        address: {
+          ...prev.address,
+          [addressField]: value
+        }
+      }));
+    } else {
+      setEditStoreData((prev) => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+  };
+
+  const handleUpdateStore = async () => {
+    if (!editingStoreId || !editStoreData.name?.trim()) {
+      alert('Store name is required.');
+      return;
+    }
+    try {
+      setIsUpdatingStore(true);
+      const payload = {
+        name: editStoreData.name.trim(),
+        description: editStoreData.description,
+        logo: editStoreData.logo || undefined,
+        banner: editStoreData.banner || undefined,
+        email: editStoreData.email || undefined,
+        phone: editStoreData.phone || undefined,
+        address: {
+          street: editStoreData.address.street,
+          city: editStoreData.address.city,
+          state: editStoreData.address.state,
+          country: editStoreData.address.country,
+          postalCode: editStoreData.address.postalCode
+        }
+      };
+      await storeService.updateStore(editingStoreId, payload);
+      await fetchVendorStores();
+      setShowEditStoreModal(false);
+      setEditingStoreId(null);
+      alert('Store updated successfully!');
+    } catch (error) {
+      console.error('Error updating store:', error);
+      alert('Failed to update store: ' + (error.response?.data?.message || error.message || 'Unknown error'));
+    } finally {
+      setIsUpdatingStore(false);
+    }
+  };
+
+  const openStoreDetail = (store) => {
+    const id = store?._id ?? store?.id;
+    if (!id) {
+      alert('Cannot open store: missing id.');
+      return;
+    }
+    router.push(`/vendor/store/${id}`);
+  };
+
   const handleCreateStore = async () => {
+    const name = newStoreData.name?.trim();
+    if (!name) {
+      alert('Store name is required.');
+      return;
+    }
+
+    const addr = newStoreData.address || {};
+    const hasAddress = ['street', 'city', 'state', 'country', 'postalCode'].some((k) =>
+      String(addr[k] || '').trim()
+    );
+
+    const payload = {
+      name,
+      description: newStoreData.description?.trim() || undefined,
+      logo: newStoreData.logo?.trim() || undefined,
+      banner: newStoreData.banner?.trim() || undefined,
+      email: newStoreData.email?.trim() || undefined,
+      phone: newStoreData.phone?.trim() || undefined,
+      isActive: true,
+      ...(hasAddress
+        ? {
+            address: {
+              street: addr.street?.trim() || undefined,
+              city: addr.city?.trim() || undefined,
+              state: addr.state?.trim() || undefined,
+              country: addr.country?.trim() || undefined,
+              postalCode: addr.postalCode?.trim() || undefined,
+            },
+          }
+        : {}),
+    };
+
     try {
       setIsCreatingStore(true);
-      
-      // ownerId is taken from JWT on the catalog service (vendorId || id) when omitted
-      const storeDataToSubmit = {
-        ...newStoreData,
-        isActive: true,
-      };
-      
-      console.log('Creating store with data:', storeDataToSubmit);
-      
-      const response = await storeService.createStore(storeDataToSubmit);
-      console.log('Store created response:', response);
-      
-      // Refresh stores list
+      await storeService.createStore(payload);
       await fetchVendorStores();
-      
-      // Close modal and reset form
       setShowCreateStoreModal(false);
       setNewStoreData({
         name: '',
@@ -250,14 +476,13 @@ export default function StoreProfilePage() {
           city: '',
           state: '',
           country: '',
-          postalCode: ''
-        }
+          postalCode: '',
+        },
       });
-      
       alert('Store created successfully!');
     } catch (error) {
       console.error('Error creating store:', error);
-      alert('Error creating store: ' + (error.response?.data?.message || error.message));
+      alert(`Error creating store: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsCreatingStore(false);
     }
@@ -368,6 +593,19 @@ export default function StoreProfilePage() {
                         <Upload className="w-4 h-4" />
                       </button>
                     </div>
+                    {formData.storeLogo && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img
+                          src={formData.storeLogo}
+                          alt="Store logo preview"
+                          className="w-12 h-12 object-cover rounded-lg border border-gray-200"
+                          onLoad={() => setPreviewState(prev => ({ ...prev, logoValid: true }))}
+                          onError={() => setPreviewState(prev => ({ ...prev, logoValid: false }))}
+                        />
+                        {previewState.logoValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                        {previewState.logoValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Store Banner</label>
@@ -383,6 +621,19 @@ export default function StoreProfilePage() {
                         <Upload className="w-4 h-4" />
                       </button>
                     </div>
+                    {formData.storeBanner && (
+                      <div className="mt-2">
+                        <img
+                          src={formData.storeBanner}
+                          alt="Store banner preview"
+                          className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                          onLoad={() => setPreviewState(prev => ({ ...prev, bannerValid: true }))}
+                          onError={() => setPreviewState(prev => ({ ...prev, bannerValid: false }))}
+                        />
+                        {previewState.bannerValid === true && <span className="text-xs text-green-600">Preview loaded</span>}
+                        {previewState.bannerValid === false && <span className="text-xs text-red-600">Invalid image URL</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -457,7 +708,11 @@ export default function StoreProfilePage() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreateStoreModal(true)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowCreateStoreModal(true);
+                }}
                 className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 <Plus className="w-4 h-4" />
@@ -484,7 +739,11 @@ export default function StoreProfilePage() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setShowCreateStoreModal(true)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowCreateStoreModal(true);
+                  }}
                   className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto"
                 >
                   <Plus className="w-4 h-4" />
@@ -493,8 +752,11 @@ export default function StoreProfilePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stores.map((store) => (
-                  <div key={store._id || store.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                {stores.map((store, index) => (
+                  <div
+                    key={store._id != null || store.id != null ? String(store._id ?? store.id) : `store-card-${index}`}
+                    className="bg-white rounded-lg shadow-sm overflow-hidden"
+                  >
                     {/* Store Banner */}
                     <div className="h-32 bg-gradient-to-r from-blue-500 to-purple-600 relative">
                       {store.banner ? (
@@ -514,7 +776,7 @@ export default function StoreProfilePage() {
                           store.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {store.status}
+                          {String(store.status || 'unknown')}
                         </span>
                       </div>
                     </div>
@@ -535,11 +797,15 @@ export default function StoreProfilePage() {
                             </div>
                           )}
                           <div>
-                            <h3 className="font-semibold text-gray-900">{store.name}</h3>
+                            <h3 className="font-semibold text-gray-900">{String(store.name || 'Unnamed Store')}</h3>
                             <div className="flex items-center space-x-1">
                               <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                              <span className="text-sm text-gray-600">{store.rating}</span>
-                              <span className="text-sm text-gray-500">({store.reviewCount} reviews)</span>
+                              <span className="text-sm text-gray-600">
+                                {displayRating(store.rating)}
+                              </span>
+                              <span className="text-sm text-gray-500">
+                                ({displayCount(store.reviewCount)} reviews)
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -551,28 +817,37 @@ export default function StoreProfilePage() {
                         )}
                       </div>
 
-                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">{store.description}</p>
+                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">{String(store.description || 'No description available')}</p>
 
                       {/* Store Stats */}
                       <div className="grid grid-cols-3 gap-4 mb-4">
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <ShoppingBag className="w-4 h-4" />
-                            <span className="text-sm font-medium">{store.totalProducts}</span>
+                            <span className="text-sm font-medium">
+                              {displayCount(store.totalProducts)}
+                            </span>
                           </div>
                           <p className="text-xs text-gray-500">Products</p>
                         </div>
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <Store className="w-4 h-4" />
-                            <span className="text-sm font-medium">{store.totalOrders}</span>
+                            <span className="text-sm font-medium">
+                              {displayCount(store.totalOrders)}
+                            </span>
                           </div>
                           <p className="text-xs text-gray-500">Orders</p>
                         </div>
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 text-gray-600">
                             <DollarSign className="w-4 h-4" />
-                            <span className="text-sm font-medium">${store.totalRevenue?.toLocaleString()}</span>
+                            <span className="text-sm font-medium">
+                              $
+                              {typeof store.totalRevenue === 'number' && !Number.isNaN(store.totalRevenue)
+                                ? store.totalRevenue.toLocaleString()
+                                : displayCount(store.totalRevenue)}
+                            </span>
                           </div>
                           <p className="text-xs text-gray-500">Revenue</p>
                         </div>
@@ -583,30 +858,45 @@ export default function StoreProfilePage() {
                         {store.address && (
                           <div className="flex items-center space-x-2 text-sm text-gray-600">
                             <MapPin className="w-4 h-4" />
-                            <span className="truncate">{store.address}</span>
+                            <span className="truncate">
+                              {typeof store.address === 'string' 
+                                ? store.address 
+                                : typeof store.address === 'object' 
+                                  ? `${store.address.street || ''}, ${store.address.city || ''}, ${store.address.state || ''}`.replace(/^,\s*|,\s*$/g, '').replace(/,\s*,/g, ',')
+                                  : store.address || ''
+                              }
+                            </span>
                           </div>
                         )}
                         {store.phone && (
                           <div className="flex items-center space-x-2 text-sm text-gray-600">
                             <Phone className="w-4 h-4" />
-                            <span>{store.phone}</span>
+                            <span>{String(store.phone || '')}</span>
                           </div>
                         )}
                         {store.email && (
                           <div className="flex items-center space-x-2 text-sm text-gray-600">
                             <Mail className="w-4 h-4" />
-                            <span className="truncate">{store.email}</span>
+                            <span className="truncate">{String(store.email || '')}</span>
                           </div>
                         )}
                       </div>
 
                       {/* Action Buttons */}
                       <div className="flex space-x-2">
-                        <button className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                        <button
+                          type="button"
+                          onClick={() => openStoreDetail(store)}
+                          className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                        >
                           <Eye className="w-4 h-4" />
                           <span className="text-sm">View</span>
                         </button>
-                        <button className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200">
+                        <button
+                          type="button"
+                          onClick={() => openEditStoreModal(store)}
+                          className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+                        >
                           <Edit className="w-4 h-4" />
                           <span className="text-sm">Edit</span>
                         </button>
@@ -620,13 +910,241 @@ export default function StoreProfilePage() {
         </main>
       </div>
 
-      {/* Create Store Modal */}
-      {showCreateStoreModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6">
+      {showEditStoreModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4"
+            role="presentation"
+            onClick={() => {
+              setShowEditStoreModal(false);
+              setEditingStoreId(null);
+            }}
+          >
+            <div
+              className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-store-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Create New Store</h2>
+                <h2 id="edit-store-title" className="text-xl font-semibold text-gray-900">
+                  Edit Store
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditStoreModal(false);
+                    setEditingStoreId(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleUpdateStore();
+                }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Store Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={editStoreData.name}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      name="description"
+                      value={editStoreData.description}
+                      onChange={handleEditStoreInputChange}
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Store Logo URL</label>
+                    <input
+                      type="url"
+                      name="logo"
+                      value={editStoreData.logo}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com/logo.png"
+                    />
+                    {editStoreData.logo && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img
+                          src={editStoreData.logo}
+                          alt="Store logo preview"
+                          className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Store Banner URL</label>
+                    <input
+                      type="url"
+                      name="banner"
+                      value={editStoreData.banner}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com/banner.png"
+                    />
+                    {editStoreData.banner && (
+                      <div className="mt-2">
+                        <img
+                          src={editStoreData.banner}
+                          alt="Store banner preview"
+                          className="w-full h-20 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={editStoreData.email}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={editStoreData.phone}
+                      onChange={handleEditStoreInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Address</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <input
+                          type="text"
+                          name="address.street"
+                          value={editStoreData.address.street}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Street"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.city"
+                          value={editStoreData.address.city}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="City"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.state"
+                          value={editStoreData.address.state}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="State"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.country"
+                          value={editStoreData.address.country}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Country"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="address.postalCode"
+                          value={editStoreData.address.postalCode}
+                          onChange={handleEditStoreInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Postal code"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditStoreModal(false);
+                      setEditingStoreId(null);
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUpdatingStore || !editStoreData.name?.trim()}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isUpdatingStore ? 'Saving...' : 'Save changes'}
+                  </button>
+                </div>
+              </form>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {showCreateStoreModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4"
+            role="presentation"
+            onClick={() => setShowCreateStoreModal(false)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="create-store-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 id="create-store-title" className="text-xl font-semibold text-gray-900">
+                  Create New Store
+                </h2>
                 <button
                   type="button"
                   onClick={() => setShowCreateStoreModal(false)}
@@ -679,6 +1197,15 @@ export default function StoreProfilePage() {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="https://example.com/logo.png"
                     />
+                    {newStoreData.logo && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img
+                          src={newStoreData.logo}
+                          alt="Store logo preview"
+                          className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
                   </div>
                   
                   <div>
@@ -693,6 +1220,15 @@ export default function StoreProfilePage() {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="https://example.com/banner.png"
                     />
+                    {newStoreData.banner && (
+                      <div className="mt-2">
+                        <img
+                          src={newStoreData.banner}
+                          alt="Store banner preview"
+                          className="w-full h-20 rounded-lg object-cover border border-gray-200"
+                        />
+                      </div>
+                    )}
                   </div>
                   
                   <div>
@@ -790,18 +1326,18 @@ export default function StoreProfilePage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isCreatingStore || !newStoreData.name}
+                    disabled={isCreatingStore || !newStoreData.name?.trim()}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isCreatingStore ? 'Creating...' : 'Create Store'}
                   </button>
                 </div>
               </form>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
-

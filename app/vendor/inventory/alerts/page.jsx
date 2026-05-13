@@ -61,14 +61,16 @@ const InventoryAlertsPage = () => {
       console.log('🔍 Fetching inventory alerts for user:', user);
       console.log('🔍 Using vendorId:', user.vendorId || user.id);
       
-      const response = await productService.getAllProducts({ 
-        vendorId: user.vendorId || user.id,
+      const response = await productService.getAllProducts({
+        vendor_id: user.vendorId || user.id,
         page,
-        limit
+        limit,
+        approval_status: 'all',
       });
       console.log('📊 API Response:', response);
-      
-      const productsData = response.data?.products || response.data || [];
+
+      const raw = response.data?.products || response.data;
+      const productsData = Array.isArray(raw) ? raw.filter(Boolean) : [];
       console.log('📦 Products Data:', productsData);
       
       // If this is the first page, set all products, otherwise append
@@ -79,7 +81,8 @@ const InventoryAlertsPage = () => {
       }
       
       // Filter for low stock and out of stock products only
-      const alertProducts = productsData.filter(product => {
+      const alertProducts = productsData.filter((product) => {
+        if (!product) return false;
         const stock = product.stock_quantity || 0;
         const minStock = product.min_stock_level || 10;
         return stock <= minStock;
@@ -145,7 +148,8 @@ const InventoryAlertsPage = () => {
     
     // Filter by stock level
     if (filters.stockLevel !== 'all') {
-      filtered = filtered.filter(product => {
+      filtered = filtered.filter((product) => {
+        if (!product) return false;
         const stock = product.stock_quantity || 0;
         const minStock = product.min_stock_level || 10;
         
@@ -186,6 +190,9 @@ const InventoryAlertsPage = () => {
   };
 
   const getStockStatus = (product) => {
+    if (!product || typeof product !== 'object') {
+      return { label: '—', color: 'text-gray-600', bgColor: 'bg-gray-100' };
+    }
     const stock = product.stock_quantity || 0;
     const minStock = product.min_stock_level || 10;
     
@@ -200,90 +207,105 @@ const InventoryAlertsPage = () => {
   };
 
   const columns = [
-    { 
-      key: 'title', 
-      label: 'Product', 
-      render: (product) => (
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
-            {product.images && product.images.length > 0 ? (
-              <img 
-                src={product.images[0]} 
-                alt={product.title}
-                className="w-full h-full object-cover rounded-lg"
-              />
-            ) : (
-              <Package className="w-5 h-5 text-gray-400" />
-            )}
+    {
+      key: 'title',
+      label: 'Product',
+      render: (value, row) => {
+        const product = row;
+        const img = product?.images?.[0];
+        const src = typeof img === 'string' ? img : img?.url;
+        return (
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden">
+              {src ? (
+                <img
+                  src={src}
+                  alt={product?.title || ''}
+                  className="w-full h-full object-cover rounded-lg"
+                />
+              ) : (
+                <Package className="w-5 h-5 text-gray-400" />
+              )}
+            </div>
+            <div>
+              <div className="font-medium text-gray-900">{product?.title}</div>
+              <div className="text-sm text-gray-500">SKU: {product?.sku}</div>
+            </div>
           </div>
-          <div>
-            <div className="font-medium text-gray-900">{product.title}</div>
-            <div className="text-sm text-gray-500">SKU: {product.sku}</div>
-          </div>
-        </div>
-      )
+        );
+      },
     },
-    { 
-      key: 'store_id', 
+    {
+      key: 'store_id',
       label: 'Store',
-      render: (product) => (
+      render: (value, row) => (
         <div className="flex items-center space-x-2">
           <Store className="w-4 h-4 text-gray-400" />
-          <span>{product.store_id?.name || 'No Store'}</span>
+          <span>{row?.store_id?.name || 'No Store'}</span>
         </div>
-      )
+      ),
     },
-    { 
-      key: 'stock_quantity', 
+    {
+      key: 'stock_quantity',
       label: 'Current Stock',
-      render: (product) => (
+      render: (value, row) => (
         <div className="flex items-center space-x-2">
-          <span className="font-medium">{product.stock_quantity || 0}</span>
-          <span className="text-sm text-gray-500">/ {product.min_stock_level || 10} min</span>
+          <span className="font-medium">{row?.stock_quantity ?? 0}</span>
+          <span className="text-sm text-gray-500">/ {row?.min_stock_level ?? 10} min</span>
         </div>
-      )
+      ),
     },
-    { 
-      key: 'stock_status', 
+    {
+      key: 'stock_status',
       label: 'Status',
-      render: (product) => {
-        const status = getStockStatus(product);
+      render: (value, row) => {
+        const status = getStockStatus(row);
         return (
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${status.bgColor} ${status.color}`}>
             {status.label}
           </span>
         );
-      }
+      },
     },
-    { 
-      key: 'price', 
+    {
+      key: 'price',
       label: 'Price',
-      render: (product) => (
+      render: (value, row) => (
         <span className="font-medium text-green-600">
-          ${product.price?.toFixed(2) || '0.00'}
+          ${Number(row?.price ?? 0).toFixed(2)}
         </span>
-      )
-    }
+      ),
+    },
   ];
 
-  const actions = [
-    {
-      label: 'View Product',
-      icon: Eye,
-      onClick: (product) => router.push(`/vendor/products/${product._id}`),
-      className: 'text-blue-600 hover:text-blue-800'
-    },
-    {
-      label: 'Update Stock',
-      icon: Edit,
-      onClick: (product) => {
-        setSelectedProduct(product);
-        setNewStock(product.stock_quantity?.toString() || '0');
-        setShowUpdateModal(true);
-      },
-      className: 'text-green-600 hover:text-green-800'
-    }
-  ];
+  const actions = (row) => (
+    <div className="flex items-center justify-end gap-2">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          router.push(`/vendor/products/${row._id}`);
+        }}
+        className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+        title="View Product"
+      >
+        <Eye className="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedProduct(row);
+          setNewStock(String(row.stock_quantity ?? 0));
+          setShowUpdateModal(true);
+        }}
+        className="p-2 text-green-600 hover:bg-green-50 rounded"
+        title="Update Stock"
+      >
+        <Edit className="w-4 h-4" />
+      </button>
+    </div>
+  );
 
   if (loading) {
     return (

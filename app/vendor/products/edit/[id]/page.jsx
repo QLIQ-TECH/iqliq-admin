@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../../../../contexts/AuthContext';
 import Sidebar from '../../../../../components/Sidebar';
 import Header from '../../../../../components/Header';
 import productService from '../../../../../lib/services/productService';
 import ImageUpload from '../../../../../components/ImageUpload';
+import { getCustomerFacingPriceParts, formatMoney } from '../../../../../lib/utils/customerFacingPrice';
 
 function normalizeProductImagesJson(images) {
   if (!Array.isArray(images)) return '[]';
@@ -15,9 +16,16 @@ function normalizeProductImagesJson(images) {
     const img = images[i];
     if (typeof img === 'string' && img.trim()) {
       out.push({ url: img.trim(), is_primary: out.length === 0, alt_text: 'Product image' });
-    } else if (img && typeof img === 'object' && img.url) {
+    } else if (img && typeof img === 'object') {
+      const resolvedUrl =
+        (typeof img.url === 'string' && img.url.trim()) ||
+        (typeof img.image === 'string' && img.image.trim()) ||
+        (typeof img.src === 'string' && img.src.trim()) ||
+        (typeof img.location === 'string' && img.location.trim()) ||
+        '';
+      if (!resolvedUrl) continue;
       out.push({
-        url: img.url,
+        url: resolvedUrl,
         is_primary: Boolean(img.is_primary),
         alt_text: img.alt_text || 'Product image',
       });
@@ -51,6 +59,8 @@ export default function EditProductPage() {
     price: '',
     discount_price: '',
     cost_price: '',
+    vat_enabled: true,
+    vat_percentage: '5',
     stock_quantity: '',
     min_stock_level: '',
     status: 'draft',
@@ -66,6 +76,30 @@ export default function EditProductPage() {
     specificationsJson: '{}',
     attributesJson: '{}',
   });
+
+  const storefrontPreview = useMemo(() => {
+    const pp = Number.parseFloat(String(formData.price));
+    const dp =
+      formData.discount_price !== undefined &&
+      formData.discount_price !== null &&
+      String(formData.discount_price).trim() !== ''
+        ? Number.parseFloat(String(formData.discount_price))
+        : null;
+    if (!Number.isFinite(pp) || pp <= 0) return null;
+    return getCustomerFacingPriceParts({
+      price: pp,
+      discount_price:
+        dp != null && Number.isFinite(dp) && dp > 0 ? dp : undefined,
+      price_includes_vat: Boolean(formData.vat_enabled),
+      vat_percentage:
+        Number.parseFloat(String(formData.vat_percentage || '5')) || 5,
+    });
+  }, [
+    formData.price,
+    formData.discount_price,
+    formData.vat_enabled,
+    formData.vat_percentage,
+  ]);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -98,6 +132,10 @@ export default function EditProductPage() {
       }
 
       setRawProduct(product);
+      const vatEnabledFromApi =
+        product.price_includes_vat !== undefined
+          ? Boolean(product.price_includes_vat)
+          : Boolean(product.vat_enabled);
       setFormData({
         title: product.title || '',
         slug: product.slug || '',
@@ -108,6 +146,8 @@ export default function EditProductPage() {
         price: String(product.price ?? ''),
         discount_price: String(product.discount_price ?? ''),
         cost_price: String(product.cost_price ?? ''),
+        vat_enabled: vatEnabledFromApi,
+        vat_percentage: String(product.vat_percentage ?? 5),
         stock_quantity: String(product.stock_quantity ?? 0),
         min_stock_level: String(product.min_stock_level ?? ''),
         status: product.status || 'draft',
@@ -291,6 +331,9 @@ export default function EditProductPage() {
         price: Number(formData.price),
         discount_price: formData.discount_price ? Number(formData.discount_price) : undefined,
         cost_price: formData.cost_price ? Number(formData.cost_price) : undefined,
+        vat_percentage: Math.min(100, Math.max(0, parseFloat(formData.vat_percentage) || 5)),
+        vat_enabled: Boolean(formData.vat_enabled),
+        price_includes_vat: Boolean(formData.vat_enabled),
         stock_quantity: Number(formData.stock_quantity),
         min_stock_level: formData.min_stock_level ? Number(formData.min_stock_level) : undefined,
         status: formData.status,
@@ -423,7 +466,11 @@ export default function EditProductPage() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price <span className="text-red-500">*</span>
+                    {formData.vat_enabled ? (
+                      <>Price incl. VAT (AED) <span className="text-red-500">*</span></>
+                    ) : (
+                      <>Price before VAT (AED) <span className="text-red-500">*</span></>
+                    )}
                   </label>
                   <input 
                     name="price" 
@@ -479,6 +526,45 @@ export default function EditProductPage() {
                   {errors.stock_quantity && <p className="text-red-500 text-sm mt-1">{errors.stock_quantity}</p>}
                 </div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VAT Mode</label>
+                  <select
+                    name="vat_enabled"
+                    value={String(formData.vat_enabled)}
+                    onChange={(e) => setFormData(prev => ({ ...prev, vat_enabled: e.target.value === 'true' }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="true">Entered price includes 5% VAT</option>
+                    <option value="false">Entered price excludes VAT (+5% on storefront)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VAT Percentage</label>
+                  <input
+                    name="vat_percentage"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.vat_percentage}
+                    onChange={handleChange}
+                    disabled={!formData.vat_enabled}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                  />
+                </div>
+              </div>
+
+              {storefrontPreview ? (
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2.5 text-sm text-gray-800">
+                  <span className="font-medium text-gray-900">Shopper-facing total:</span>{' '}
+                  {formatMoney(storefrontPreview.display, 'AED ')} incl. VAT
+                  {storefrontPreview.compareAt != null ? (
+                    <span className="ml-2 text-xs text-gray-600">
+                      (<span className="line-through">{formatMoney(storefrontPreview.compareAt, 'AED ')}</span> before sale)
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <input name="min_stock_level" type="number" min="0" value={formData.min_stock_level} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg" placeholder="Min Stock" />
@@ -638,4 +724,3 @@ export default function EditProductPage() {
     </div>
   );
 }
-

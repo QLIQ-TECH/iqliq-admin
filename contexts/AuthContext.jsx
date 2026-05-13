@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import apiService from '../lib/api-debug';
 import { authApi, REFRESH_TOKEN_KEY } from '../lib/apiClient';
 import { loginApi } from '../src/api/services/auth.api';
 
@@ -45,6 +46,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    // Safety net: never allow auth bootstrap to keep the app in loading forever.
+    const loadingGuard = setTimeout(() => {
+      if (isMounted) {
+        console.warn('⚠️ Auth init timeout reached, forcing isLoading=false');
+        setIsLoading(false);
+      }
+    }, 8000);
+
     const initAuth = async () => {
       // Small delay to ensure localStorage is ready
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -86,7 +96,7 @@ export const AuthProvider = ({ children }) => {
               accessToken: savedToken,
               refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY) || null,
             });
-            setIsLoading(false);
+            if (isMounted) setIsLoading(false);
             
             // Optionally verify token in background (don't wait for it)
             // Only clear session if explicitly unauthorized
@@ -96,7 +106,7 @@ export const AuthProvider = ({ children }) => {
           } catch (error) {
             console.error('❌ Error parsing saved auth data:', error);
             clearAuthData();
-            setIsLoading(false);
+            if (isMounted) setIsLoading(false);
           }
         } else {
           const vendorAccess = localStorage.getItem('access_token');
@@ -108,22 +118,27 @@ export const AuthProvider = ({ children }) => {
                 localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
               }
               await verifyToken(vendorAccess);
-              setIsLoading(false);
+              if (isMounted) setIsLoading(false);
             } catch (e) {
               console.error('Vendor token adoption failed:', e);
-              setIsLoading(false);
+              if (isMounted) setIsLoading(false);
             }
           } else {
             console.log('❌ No saved session found');
-            setIsLoading(false);
+            if (isMounted) setIsLoading(false);
           }
         }
       } else {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
     
     initAuth();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(loadingGuard);
+    };
   }, []);
 
   const verifyToken = async (accessToken) => {
@@ -133,7 +148,11 @@ export const AuthProvider = ({ children }) => {
       }
 
       const response = await withTimeout(authApi.get('/profile'), 4000);
-      const userData = response.user;
+      const userData = response.user || response.data || response;
+      
+      if (!userData || !userData.email) {
+        throw new Error('Invalid user data received from profile endpoint');
+      }
       
       // Map backend roles to frontend roles
       let frontendRole = 'vendor'; // default
@@ -153,7 +172,7 @@ export const AuthProvider = ({ children }) => {
         phone: userData.phone,
         cognitoUserId: userData.cognitoUserId,
         vendorId: userData.vendorId || normalizedUserId, // Add vendorId field
-        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? true,
+        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? (userData.vendorId ? true : false),
       };
       
       setUser(frontendUserData);
@@ -210,12 +229,23 @@ export const AuthProvider = ({ children }) => {
         roles: ['vendor', 'brand', 'admin', 'manager', 'super_admin'],
       });
 
-      const userData = res?.data?.user;
-      const tokenData = res?.data?.tokens;
-      const accessToken = tokenData?.accessToken || null;
-      const refreshToken = tokenData?.refreshToken || null;
+      // Support multiple response shapes from different auth deployments:
+      // { user, tokens } OR { data: { user, tokens } } OR { data: { data: { user, tokens } } }
+      const payload =
+        (res?.user && res) ||
+        (res?.data?.user && res.data) ||
+        (res?.data?.data?.user && res.data.data) ||
+        res;
+
+      const userData = payload?.user || payload?.data?.user || null;
+      const tokenData = payload?.tokens || payload?.data?.tokens || null;
+      const accessToken =
+        tokenData?.accessToken || tokenData?.access_token || payload?.accessToken || null;
+      const refreshToken =
+        tokenData?.refreshToken || tokenData?.refresh_token || payload?.refreshToken || null;
 
       if (!userData || !accessToken) {
+        console.error('Unexpected login response shape:', res);
         throw new Error('Login failed: tokens missing from response');
       }
 
@@ -232,7 +262,7 @@ export const AuthProvider = ({ children }) => {
       const onboardingCompleted =
         typeof userData.onboardingCompleted === 'boolean'
           ? userData.onboardingCompleted
-          : false;
+          : userData.vendorId ? true : false; // If vendor has vendorId, consider onboarding complete
 
       const frontendUserData = {
         id: normalizedUserId,
@@ -295,7 +325,7 @@ export const AuthProvider = ({ children }) => {
       
       // Redirect to login page
       if (typeof window !== 'undefined') {
-        window.location.href = '/onboarding/login';
+        window.location.href = '/login';
       }
     }
   };

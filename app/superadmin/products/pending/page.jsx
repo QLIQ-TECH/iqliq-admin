@@ -21,6 +21,37 @@ export default function PendingByVendorPage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [statusForm, setStatusForm] = useState({ status: '', approval_status: '' });
 
+  const getVendorDisplayName = (product) => {
+    if (!product) return 'N/A';
+    const looksLikeObjectId = (value) =>
+      typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value.trim());
+    if (typeof product.vendorName === 'string' && product.vendorName.trim() && !looksLikeObjectId(product.vendorName)) return product.vendorName;
+    if (typeof product.vendor_name === 'string' && product.vendor_name.trim()) return product.vendor_name;
+    if (product.vendor_id && typeof product.vendor_id === 'object') {
+      if (typeof product.vendor_id.name === 'string' && product.vendor_id.name.trim()) return product.vendor_id.name;
+      if (typeof product.vendor_id.businessName === 'string' && product.vendor_id.businessName.trim()) return product.vendor_id.businessName;
+    }
+    if (product.vendor && typeof product.vendor === 'object') {
+      if (typeof product.vendor.name === 'string' && product.vendor.name.trim()) return product.vendor.name;
+      if (typeof product.vendor.businessName === 'string' && product.vendor.businessName.trim()) return product.vendor.businessName;
+    }
+    const productVendorId = normalizeId(product.vendor_id) || normalizeId(product.vendorId) || normalizeId(product.vendor);
+    if (productVendorId) {
+      const vendorSummary = vendors.find((v) => normalizeId(v.vendor_id) === productVendorId);
+      const fallbackName = vendorSummary?.stores?.[0]?.name;
+      if (typeof fallbackName === 'string' && fallbackName.trim()) return fallbackName;
+    }
+    return 'N/A';
+  };
+
+  const getPrimaryImageUrl = (images) => {
+    if (!Array.isArray(images) || images.length === 0) return '';
+    const primary = images.find((img) => img?.is_primary) || images[0];
+    if (typeof primary === 'string') return primary;
+    if (!primary || typeof primary !== 'object') return '';
+    return primary.url || primary.image || primary.src || primary.location || '';
+  };
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.push('/login');
@@ -94,6 +125,7 @@ export default function PendingByVendorPage() {
         await fetchVendorProducts(selectedVendor);
       }
       await fetchVendors();
+      closeProductDetails();
     } catch (error) {
       alert(error?.message || 'Failed to approve product');
     } finally {
@@ -117,6 +149,7 @@ export default function PendingByVendorPage() {
         await fetchVendorProducts(selectedVendor);
       }
       await fetchVendors();
+      closeProductDetails();
     } catch (error) {
       alert(error?.message || 'Failed to reject product');
     } finally {
@@ -159,19 +192,61 @@ export default function PendingByVendorPage() {
     if (!normalizedProductId) return;
     try {
       setActionLoadingId(normalizedProductId);
-      await productService.updateProduct(normalizedProductId, {
-        status: statusForm.status,
-        approval_status: statusForm.approval_status,
-      });
+
+      const initialStatus = selectedProduct?.status || 'draft';
+      const initialApproval = selectedProduct?.approval_status || 'pending';
+      const statusChanged = initialStatus !== statusForm.status;
+      const approvalChanged = initialApproval !== statusForm.approval_status;
+
+      if (!statusChanged && !approvalChanged) {
+        return;
+      }
+
+      if (approvalChanged) {
+        if (statusForm.approval_status === 'approved') {
+          await productService.approveProduct(normalizedProductId);
+        } else if (statusForm.approval_status === 'rejected') {
+          const reason = prompt('Enter rejection reason:');
+          if (!reason) {
+            return;
+          }
+          await productService.rejectProduct(normalizedProductId, reason);
+        } else {
+          await productService.updateProduct(normalizedProductId, {
+            approval_status: statusForm.approval_status,
+          });
+        }
+      }
+
+      if (statusChanged) {
+        await productService.updateProduct(normalizedProductId, {
+          status: statusForm.status,
+        });
+      }
+
       if (selectedVendor) await fetchVendorProducts(selectedVendor);
       await fetchVendors();
-      await openProductDetails(normalizedProductId);
+      const shouldCloseAfterDecision =
+        statusForm.approval_status === 'approved' || statusForm.approval_status === 'rejected';
+      if (shouldCloseAfterDecision) {
+        closeProductDetails();
+      } else {
+        await openProductDetails(normalizedProductId);
+      }
     } catch (error) {
       alert(error?.message || 'Failed to update product status');
     } finally {
       setActionLoadingId(null);
     }
   };
+
+  const hasStatusChanges = Boolean(
+    selectedProduct &&
+      (
+        (selectedProduct?.status || 'draft') !== statusForm.status ||
+        (selectedProduct?.approval_status || 'pending') !== statusForm.approval_status
+      )
+  );
 
   if (isLoading || loading) {
     return (
@@ -293,9 +368,9 @@ export default function PendingByVendorPage() {
                   <div className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="md:col-span-1">
-                        {selectedProduct.images?.[0]?.url ? (
+                        {getPrimaryImageUrl(selectedProduct.images) ? (
                           <img
-                            src={selectedProduct.images[0].url}
+                            src={getPrimaryImageUrl(selectedProduct.images)}
                             alt={selectedProduct.title}
                             className="w-full h-56 object-cover rounded border"
                           />
@@ -312,11 +387,11 @@ export default function PendingByVendorPage() {
                           <div><span className="text-gray-500">SKU:</span> {selectedProduct.sku || '-'}</div>
                           <div><span className="text-gray-500">Price:</span> ${selectedProduct.price}</div>
                           <div><span className="text-gray-500">Stock:</span> {selectedProduct.stock_quantity ?? 0}</div>
-                          <div><span className="text-gray-500">Brand:</span> {selectedProduct.brand_id?.name || '-'}</div>
-                          <div><span className="text-gray-500">Store:</span> {selectedProduct.store_id?.name || '-'}</div>
-                          <div><span className="text-gray-500">Vendor:</span> {selectedProduct.vendor_id || '-'}</div>
-                        </div>
-                      </div>
+                      <div><span className="text-gray-500">Brand:</span> {selectedProduct.brand_id?.name || '-'}</div>
+                      <div><span className="text-gray-500">Store:</span> {selectedProduct.store_id?.name || '-'}</div>
+                      <div><span className="text-gray-500">Vendor:</span> {getVendorDisplayName(selectedProduct)}</div>
+                    </div>
+                  </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -352,7 +427,10 @@ export default function PendingByVendorPage() {
                       <button
                         type="button"
                         onClick={handleUpdateProductStatuses}
-                        disabled={actionLoadingId === normalizeId(selectedProduct._id)}
+                        disabled={
+                          actionLoadingId === normalizeId(selectedProduct._id) ||
+                          !hasStatusChanges
+                        }
                         className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                       >
                         {actionLoadingId === normalizeId(selectedProduct._id) ? 'Updating...' : 'Update Statuses'}

@@ -1,27 +1,36 @@
-import React from 'react';
-import { Menu, Search, Bell } from 'lucide-react';
+'use client';
 
-const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
+import React from 'react';
+import Link from 'next/link';
+import { Menu, Search, Bell, Gift } from 'lucide-react';
+
+const Header = ({ onMenuClick, onNotificationClick, userType = 'superadmin', user }) => {
+  const profileInitial =
+    (user?.name && String(user.name).trim().charAt(0).toUpperCase()) ||
+    (user?.email && String(user.email).trim().charAt(0).toUpperCase()) ||
+    'A';
+
+  const referralHref = userType === 'vendor' ? '/vendor/referral' : '/admin/referral';
+
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
-        {/* Left side */}
-        <div className="flex items-center space-x-4">
+        {/* Left: hamburger (mobile). Desktop: context title only — sidebar already shows IQLIQ branding */}
+        <div className="flex items-center space-x-4 min-w-0">
           <button
             onClick={onMenuClick}
             className="p-2 rounded-md hover:bg-gray-100 lg:hidden"
           >
             <Menu className="w-6 h-6 text-gray-600" />
           </button>
-          
-          <div className="hidden lg:block">
-            <div className="leading-tight">
-              <h1 className="text-2xl font-bold text-gray-900">IQLIQ</h1>
-              <p className="text-sm text-gray-600">
-                {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Vendor Dashboard'}
-              </p>
+
+          {userType !== 'vendor' && (
+            <div className="hidden lg:block min-w-0">
+              <h1 className="text-xl font-semibold text-gray-900 tracking-tight truncate">
+                {userType === 'superadmin' ? 'Super Admin Dashboard' : 'Dashboard'}
+              </h1>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Center - Search */}
@@ -38,25 +47,30 @@ const Header = ({ onMenuClick, userType = 'superadmin', user }) => {
 
         {/* Right side */}
         <div className="flex items-center space-x-4">
+          <Link
+            href={referralHref}
+            className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:bg-blue-800 transition"
+          >
+            {/* <Gift className="h-4 w-4" /> */}
+            Refer Now
+          </Link>
+
           <button className="p-2 rounded-md hover:bg-gray-100 relative">
             <Bell className="w-6 h-6 text-gray-600" />
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
           </button>
           
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">
-                {user ? user.avatar : 'A'}
-              </span>
-            </div>
-            <div className="hidden md:block">
-              <p className="text-sm font-medium text-gray-900">
-                {user ? user.name : (userType === 'superadmin' ? 'Super Admin' : 'Vendor')}
-              </p>
-              <p className="text-xs text-gray-500">
-                {user ? user.email : 'admin@qliq.com'}
-              </p>
-            </div>
+          <div
+            className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center shrink-0 cursor-default"
+            title={
+              user
+                ? [user.name, user.email].filter(Boolean).join(' · ') || undefined
+                : userType === 'superadmin'
+                  ? 'Super Admin'
+                  : 'Vendor'
+            }
+          >
+            <span className="text-white font-bold text-sm">{user ? profileInitial : 'A'}</span>
           </div>
         </div>
       </div>

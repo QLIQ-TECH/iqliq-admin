@@ -16,6 +16,7 @@ import {
   Eye,
   Edit
 } from 'lucide-react';
+import { extractOrdersListFromApiResponse, normalizeVendorOrder } from '../../../../lib/utils/vendorOrderUtils';
 
 const PendingOrdersPage = () => {
   const { user, isLoading } = useAuth();
@@ -54,18 +55,17 @@ const PendingOrdersPage = () => {
       const response = await orderService.getVendorPendingOrders(user?.vendorId || user?.id);
       console.log('📊 Pending Orders Response:', response);
       
-      const ordersData = response.data?.orders || response.data || response || [];
-      const filteredPending = ordersData.filter(order => order.status === 'pending');
-      setPendingOrders(filteredPending);
+      const ordersData = extractOrdersListFromApiResponse(response).map(normalizeVendorOrder);
+      setPendingOrders(ordersData);
       
       // Calculate stats
-      const total = filteredPending.length;
-      const urgent = filteredPending.filter(o => {
+      const total = ordersData.length;
+      const urgent = ordersData.filter((o) => {
         const orderDate = new Date(o.createdAt);
         const daysDiff = (new Date() - orderDate) / (1000 * 60 * 60 * 24);
         return daysDiff >= 2; // Orders older than 2 days are urgent
       }).length;
-      const today = filteredPending.filter(o => {
+      const today = ordersData.filter((o) => {
         const orderDate = new Date(o.createdAt);
         const today = new Date();
         return orderDate.toDateString() === today.toDateString();
@@ -139,7 +139,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'orderNumber', 
       label: 'Order #',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <div className="text-gray-400">N/A</div>;
         return (
           <div className="font-medium text-gray-900">
@@ -151,7 +151,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'customer', 
       label: 'Customer',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <div className="text-gray-400">N/A</div>;
         return (
           <div>
@@ -164,11 +164,11 @@ const PendingOrdersPage = () => {
     { 
       key: 'total', 
       label: 'Total',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         return (
           <span className="font-medium text-green-600">
-            ${order.total?.toFixed(2) || order.totalAmount?.toFixed(2) || '0.00'}
+            AED {Number(order.totalAmount ?? order.total ?? 0).toFixed(2)}
           </span>
         );
       }
@@ -176,7 +176,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'priority', 
       label: 'Priority',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         const priority = getOrderPriority(order);
         return (
@@ -189,7 +189,7 @@ const PendingOrdersPage = () => {
     { 
       key: 'createdAt', 
       label: 'Order Date',
-      render: (order) => {
+      render: (_value, order) => {
         if (!order) return <span className="text-gray-400">N/A</span>;
         const orderDate = new Date(order.createdAt);
         const daysDiff = Math.floor((new Date() - orderDate) / (1000 * 60 * 60 * 24));
@@ -218,7 +218,7 @@ const PendingOrdersPage = () => {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          handleStatusUpdate(order._id, 'confirmed');
+          handleStatusUpdate(order._id, 'accepted');
         }}
         className="p-2 text-green-600 hover:bg-green-50 rounded"
         title="Confirm Order"
@@ -271,7 +271,9 @@ const PendingOrdersPage = () => {
             {/* Header */}
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-900">Pending Orders</h1>
-              <p className="text-gray-600 mt-1">Orders waiting for your confirmation and processing</p>
+              <p className="text-gray-600 mt-1">
+                New and in-progress orders (status: pending, accepted, or processing) until they ship.
+              </p>
             </div>
 
             {/* Stats Cards */}

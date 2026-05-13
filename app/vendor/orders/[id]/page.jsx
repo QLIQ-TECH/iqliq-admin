@@ -35,6 +35,72 @@ const VendorOrderDetailPage = () => {
   const [newStatus, setNewStatus] = useState('');
   const [error, setError] = useState(null);
 
+  const normalizeOrder = (raw) => {
+    const shippingAddress = raw?.shippingAddress || {};
+    const deliveryAddress = raw?.deliveryAddress || {};
+    const items = Array.isArray(raw?.items) ? raw.items : [];
+    const normalizedItems = items.map((item) => ({
+      ...item,
+      product: {
+        title: item?.name || item?.product?.title || 'N/A',
+        sku: item?.product?.sku || item?.productId || 'N/A',
+        image: item?.image || item?.product?.image || null,
+      },
+      price: Number(item?.price || 0),
+      quantity: Number(item?.quantity || 0),
+    }));
+    const computedSubtotal = normalizedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const parsedSubtotal = Number(raw?.subtotal ?? computedSubtotal ?? 0);
+    const parsedTax = Number(raw?.tax ?? 0);
+    const parsedTotal = Number(
+      raw?.total ??
+      raw?.totalAmount ??
+      0
+    );
+
+    const explicitShippingCandidates = [
+      raw?.shippingCost,
+      raw?.shippingMethodCost,
+      raw?.deliveryCharge,
+      raw?.deliveryCharges,
+      raw?.shipping,
+      shippingAddress?.zoneCharge,
+      shippingAddress?.zone?.charge,
+      deliveryAddress?.zoneCharge,
+      deliveryAddress?.zone?.charge,
+    ];
+
+    const explicitShipping = explicitShippingCandidates
+      .map((v) => Number(v))
+      .find((v) => Number.isFinite(v) && v > 0);
+
+    const derivedShipping = parsedTotal - parsedSubtotal - parsedTax;
+    const resolvedShippingCost = Number.isFinite(explicitShipping)
+      ? Number(explicitShipping)
+      : (Number.isFinite(derivedShipping) && derivedShipping > 0 ? derivedShipping : 0);
+    return {
+      ...raw,
+      items: normalizedItems,
+      customer: raw?.customer || {
+        name: shippingAddress.fullName || raw?.userId?.name || 'N/A',
+        email: shippingAddress.email || raw?.userId?.email || 'N/A',
+        phone: shippingAddress.phone || raw?.userId?.phone || 'N/A',
+      },
+      shippingAddress: {
+        name: shippingAddress.fullName || shippingAddress.name || 'N/A',
+        street: shippingAddress.addressLine1 || shippingAddress.street || '',
+        city: shippingAddress.city || '',
+        state: shippingAddress.state || '',
+        zipCode: shippingAddress.postalCode || shippingAddress.zipCode || '',
+        country: shippingAddress.country || '',
+      },
+      subtotal: parsedSubtotal,
+      shippingCost: Number.isFinite(resolvedShippingCost) ? resolvedShippingCost : 0,
+      tax: parsedTax,
+      total: Number(raw?.total ?? raw?.totalAmount ?? (computedSubtotal + (Number.isFinite(resolvedShippingCost) ? resolvedShippingCost : 0) + parsedTax)),
+    };
+  };
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.push('/login');
@@ -50,11 +116,20 @@ const VendorOrderDetailPage = () => {
     try {
       setLoading(true);
       console.log('🔍 Fetching order details for:', orderId);
-      
-      const response = await orderService.getOrderById(orderId);
-      console.log('📊 Order Details Response:', response);
-      
-      const orderData = response.data || response;
+      let orderPayload = null;
+      try {
+        const response = await orderService.getOrderById(orderId);
+        console.log('📊 Order Details Response:', response);
+        orderPayload = response?.data || response;
+      } catch (primaryError) {
+        console.warn('⚠️ Admin details endpoint failed, trying vendor fallback:', primaryError?.message);
+        const vendorId = user?.vendorId || user?.id;
+        if (vendorId) {
+          orderPayload = await orderService.getVendorOrderById(vendorId, orderId);
+        }
+      }
+
+      const orderData = normalizeOrder(orderPayload);
       
       // Check if order data is valid
       if (!orderData || (!orderData._id && !orderData.id)) {
@@ -76,50 +151,7 @@ const VendorOrderDetailPage = () => {
       } else if (error.message?.includes('Missing token') || error.response?.status === 401) {
         setError('Authentication required. Please log in again.');
       } else {
-        // For other errors, create a mock order for development/testing
-        console.log('🔄 Creating mock order for development...');
-        const mockOrder = {
-          _id: orderId,
-          orderNumber: `ORD-${orderId.slice(-8)}`,
-          status: 'pending',
-          customer: {
-            name: 'John Doe',
-            email: 'john@example.com',
-            phone: '+1234567890'
-          },
-          userId: {
-            name: 'John Doe',
-            email: 'john@example.com',
-            phone: '+1234567890'
-          },
-          shippingAddress: {
-            name: 'John Doe',
-            street: '123 Main St',
-            city: 'New York',
-            state: 'NY',
-            zipCode: '10001',
-            country: 'USA'
-          },
-          items: [
-            {
-              product: {
-                title: 'Sample Product',
-                sku: 'SKU-001',
-                image: null
-              },
-              quantity: 1,
-              price: 99.99
-            }
-          ],
-          subtotal: 99.99,
-          shippingCost: 9.99,
-          tax: 8.99,
-          total: 118.97,
-          createdAt: new Date().toISOString(),
-          notes: 'This is a mock order for development purposes'
-        };
-        setOrder(mockOrder);
-        setNewStatus(mockOrder.status);
+        setError(error.response?.data?.message || 'Failed to fetch order details');
       }
     } finally {
       setLoading(false);

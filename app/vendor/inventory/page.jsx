@@ -58,14 +58,15 @@ export default function VendorInventoryPage() {
   }, [user, isLoading, router]);
 
   const fetchInventory = async (page = 1, limit = 100) => {
+    const vendorId = user?.vendorId || user?.id;
     try {
       setLoading(true);
-      console.log('🔍 Fetching inventory for user:', user);
-      console.log('🔍 Using vendorId:', user.vendorId || user.id);
-      console.log('🔍 Fetching page:', page, 'limit:', limit);
-      
+      console.log('🔍 Fetching inventory for vendor:', vendorId);
+      console.log('🔍 User info:', { email: user.email, role: user.role, vendorId: user.vendorId, id: user.id });
+      console.log('🔍 API params:', { vendor_id: vendorId, page, limit });
+
       const response = await productService.getAllProducts({ 
-        vendorId: user.vendorId || user.id,
+        vendor_id: vendorId,
         page,
         limit
       });
@@ -130,8 +131,9 @@ export default function VendorInventoryPage() {
       setStores(uniqueStores);
       
     } catch (error) {
-      console.error('❌ Error fetching inventory:', error);
+      console.error('❌ Error fetching inventory for vendor:', vendorId);
       console.error('❌ Error details:', error.response?.data || error.message);
+      console.error('❌ Full error:', error);
       setProducts([]);
       setAllProducts([]);
       setStats({ total: 0, inStock: 0, lowStock: 0, outOfStock: 0 });
@@ -354,8 +356,8 @@ export default function VendorInventoryPage() {
         
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
-            <p className="text-gray-600 mt-1">Manage your product stock levels across all stores</p>
+            <h1 className="text-2xl font-bold text-gray-900">My Inventory</h1>
+            <p className="text-gray-600 mt-1">Manage stock levels for your products only</p>
           </div>
 
           {/* Stats Cards */}
