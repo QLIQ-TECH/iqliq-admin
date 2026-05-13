@@ -95,7 +95,7 @@ export const AuthProvider = ({ children }) => {
         if (savedUser && savedToken) {
           try {
             const userData = JSON.parse(savedUser);
-            
+
             console.log('✅ Session restored successfully:', userData.email);
             setUser(userData);
             setTokens({
@@ -103,12 +103,10 @@ export const AuthProvider = ({ children }) => {
               refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY) || null,
             });
             if (isMounted) setIsLoading(false);
-            
-            // Optionally verify token in background (don't wait for it)
-            // Only clear session if explicitly unauthorized
-            verifyToken(savedToken).catch((err) => {
-              console.log('Background token verification failed:', err);
-            });
+            // Token validity is verified on the next real API call via fetchWithAuthRetry.
+            // A background /profile check is intentionally omitted here because it can
+            // clear a valid onboarding session when the sign-up token (qliqAuth service)
+            // is not accepted by the profile endpoint (auth service).
           } catch (error) {
             console.error('❌ Error parsing saved auth data:', error);
             clearAuthData();
@@ -118,17 +116,35 @@ export const AuthProvider = ({ children }) => {
           const vendorAccess = localStorage.getItem('access_token');
           const vendorRefresh = localStorage.getItem('refresh_token');
           if (vendorAccess) {
-            try {
-              localStorage.setItem(ACCESS_TOKEN_KEY, vendorAccess);
-              if (vendorRefresh) {
-                localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
-              }
-              await verifyToken(vendorAccess);
-              if (isMounted) setIsLoading(false);
-            } catch (e) {
-              console.error('Vendor token adoption failed:', e);
-              if (isMounted) setIsLoading(false);
+            localStorage.setItem(ACCESS_TOKEN_KEY, vendorAccess);
+            if (vendorRefresh) {
+              localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
             }
+            // Try to build a minimal user object from any stored identity fields
+            const email = localStorage.getItem('email') || '';
+            const id = localStorage.getItem('id') || '';
+            const role = localStorage.getItem('role') || 'vendor';
+            const onboardingDone = localStorage.getItem('onboarding_completed') === 'true';
+            if (email || id) {
+              const fallbackUser = {
+                id,
+                email,
+                name: email,
+                role: role === 'vendor' ? 'vendor' : 'superadmin',
+                avatar: (email || 'U').charAt(0).toUpperCase(),
+                phone: '',
+                cognitoUserId: '',
+                vendorId: id,
+                onboardingCompleted: onboardingDone,
+              };
+              setUser(fallbackUser);
+              setTokens({
+                accessToken: vendorAccess,
+                refreshToken: vendorRefresh || null,
+              });
+              localStorage.setItem(USER_KEY, JSON.stringify(fallbackUser));
+            }
+            if (isMounted) setIsLoading(false);
           } else {
             console.log('❌ No saved session found');
             if (isMounted) setIsLoading(false);
