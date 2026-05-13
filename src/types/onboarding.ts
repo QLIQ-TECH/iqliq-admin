@@ -28,6 +28,7 @@ export type SocialAccount = {
 };
 
 export type OnboardingPayload = {
+  authUserId?: string;
   languages?: string[];
   goals?: string[]
   salesChannel?: string[];
