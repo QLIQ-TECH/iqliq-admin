@@ -86,10 +86,11 @@ const WelcomeOnboardingGrowBusiness = () => {
         }
 
         toast.success('Onboarding successful');
-
-        // Use window.location.href to force a full page reload and re-initialize AuthContext
-        window.location.href = '/';
-      } catch (error) {
+ 
+         // Use window.location.href to force a full page reload and re-initialize AuthContext
+         // Redirect directly to the vendor dashboard
+         window.location.href = '/vendor';
+       } catch (error) {
         console.error('Onboarding submission failed:', error);
         toast.error('Failed to complete onboarding. Please try again.');
       }
