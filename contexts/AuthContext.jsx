@@ -449,6 +449,18 @@ export const AuthProvider = ({ children }) => {
     return newAccessToken;
   };
 
+  const markOnboardingComplete = () => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, onboardingCompleted: true };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(USER_KEY, JSON.stringify(updated));
+        localStorage.setItem('onboarding_completed', 'true');
+      }
+      return updated;
+    });
+  };
+
   const value = {
     user,
     tokens,
@@ -456,6 +468,7 @@ export const AuthProvider = ({ children }) => {
     signup,
     logout,
     refreshAccessToken,
+    markOnboardingComplete,
     isLoading,
     isAuthenticated: !!user,
   };

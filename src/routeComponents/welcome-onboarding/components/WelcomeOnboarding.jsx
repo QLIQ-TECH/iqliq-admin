@@ -17,11 +17,13 @@ import { CheckBoxformSchema } from '@/validation/validation.schema';
 import { postOnboarding } from '@/api/services/onboarding.api';
 import { useAppToast } from '@/hooks/useAppToast';
 import { redirectToHostApp } from '@/lib/utils';
+import { useAuth } from '../../../../contexts/AuthContext';
 
 const WelcomeOnboardingGrowBusiness = () => {
   const toast = useAppToast();
   const router = useRouter();
   const { data: onboardingData, reset } = useOnboarding();
+  const { markOnboardingComplete } = useAuth();
   const form = useForm({
     resolver: zodResolver(CheckBoxformSchema),
     defaultValues: {
@@ -35,62 +37,14 @@ const WelcomeOnboardingGrowBusiness = () => {
         await postOnboarding(onboardingData);
         reset();
 
-        localStorage.setItem('onboarding_completed', 'true');
-
-        const vendorAccessToken =
-          localStorage.getItem('qliq-admin-access-token') ||
-          localStorage.getItem('access_token');
-        const vendorRefreshToken =
-          localStorage.getItem('qliq-admin-refresh-token') ||
-          localStorage.getItem('refresh_token');
-
-        if (vendorAccessToken) {
-          localStorage.setItem('qliq-admin-access-token', vendorAccessToken);
-          localStorage.setItem(
-            'qliq-admin-tokens',
-            JSON.stringify({
-              accessToken: vendorAccessToken,
-              refreshToken: vendorRefreshToken || null,
-            })
-          );
-        }
-
-        if (vendorRefreshToken) {
-          localStorage.setItem('qliq-admin-refresh-token', vendorRefreshToken);
-        }
-
-        const existingUser = localStorage.getItem('qliq-admin-user');
-        if (existingUser) {
-          const parsed = JSON.parse(existingUser);
-          parsed.onboardingCompleted = true;
-          localStorage.setItem('qliq-admin-user', JSON.stringify(parsed));
-        } else {
-          const id = localStorage.getItem('id') || '';
-          const email = localStorage.getItem('email') || '';
-          const name =
-            typeof onboardingData?.companyName === 'string'
-              ? onboardingData.companyName
-              : '';
-          const adminUser = {
-            id,
-            email,
-            name,
-            role: 'vendor',
-            avatar: (name || email || 'U').charAt(0).toUpperCase(),
-            phone: '',
-            cognitoUserId: '',
-            vendorId: id,
-            onboardingCompleted: true,
-          };
-          localStorage.setItem('qliq-admin-user', JSON.stringify(adminUser));
-        }
+        // Update AuthContext state directly so the vendor page sees the user as authenticated
+        // without a full page reload (which would trigger a background token verification
+        // that could race with the navigation and clear the session).
+        markOnboardingComplete();
 
         toast.success('Onboarding successful');
- 
-         // Use window.location.href to force a full page reload and re-initialize AuthContext
-         // Redirect directly to the vendor dashboard
-         window.location.href = '/vendor';
-       } catch (error) {
+        router.push('/vendor');
+      } catch (error) {
         console.error('Onboarding submission failed:', error);
         toast.error('Failed to complete onboarding. Please try again.');
       }
