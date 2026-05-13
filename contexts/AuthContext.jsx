@@ -63,6 +63,12 @@ export const AuthProvider = ({ children }) => {
         const savedUser = localStorage.getItem(USER_KEY);
         let savedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
 
+        console.log('🔄 [AuthContext] initAuth starting:', {
+          hasUser: !!savedUser,
+          hasToken: !!savedToken,
+          onboardingCompleted: localStorage.getItem('onboarding_completed')
+        });
+
         if (!savedToken) {
           const legacyTokensRaw = localStorage.getItem(LEGACY_TOKENS_KEY);
           if (legacyTokensRaw) {
@@ -168,11 +174,11 @@ export const AuthProvider = ({ children }) => {
         email: userData.email,
         name: userData.name,
         role: frontendRole,
-        avatar: userData.name.charAt(0).toUpperCase(),
+        avatar: userData.name ? userData.name.charAt(0).toUpperCase() : 'U',
         phone: userData.phone,
         cognitoUserId: userData.cognitoUserId,
         vendorId: userData.vendorId || normalizedUserId, // Add vendorId field
-        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? (userData.vendorId ? true : false),
+        onboardingCompleted: userData.onboardingCompleted || onboardingCompletedLocal || (userData.vendorId ? true : false),
       };
       
       setUser(frontendUserData);
@@ -259,10 +265,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const normalizedUserId = userData.id || userData._id || '';
-      const onboardingCompleted =
-        typeof userData.onboardingCompleted === 'boolean'
-          ? userData.onboardingCompleted
-          : userData.vendorId ? true : false; // If vendor has vendorId, consider onboarding complete
+      const onboardingCompleted = !!(userData.onboardingCompleted || (userData.vendorId ? true : false)); 
 
       const frontendUserData = {
         id: normalizedUserId,
@@ -348,10 +351,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const normalizedUserId = userData.id || userData._id || '';
-      const onboardingCompleted =
-        typeof userData.onboardingCompleted === 'boolean'
-          ? userData.onboardingCompleted
-          : userData.vendorId ? true : false;
+      const onboardingCompleted = !!(userData.onboardingCompleted || (userData.vendorId ? true : false));
 
       const frontendUserData = {
         id: normalizedUserId,
@@ -449,6 +449,18 @@ export const AuthProvider = ({ children }) => {
     return newAccessToken;
   };
 
+  const markOnboardingComplete = () => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, onboardingCompleted: true };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(USER_KEY, JSON.stringify(updated));
+        localStorage.setItem('onboarding_completed', 'true');
+      }
+      return updated;
+    });
+  };
+
   const value = {
     user,
     tokens,
@@ -456,6 +468,7 @@ export const AuthProvider = ({ children }) => {
     signup,
     logout,
     refreshAccessToken,
+    markOnboardingComplete,
     isLoading,
     isAuthenticated: !!user,
   };
