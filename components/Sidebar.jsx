@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '../lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   LayoutDashboard, 
   Users, 
@@ -44,8 +45,15 @@ import {
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) => {
+  const { logout: contextLogout } = useAuth();
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState({});
+  const handleLogout = () => {
+    const logoutFn = typeof onLogout === 'function' ? onLogout : contextLogout;
+    if (typeof logoutFn === 'function') {
+      logoutFn();
+    }
+  };
 
   // Load expanded sections from localStorage on mount
   useEffect(() => {
@@ -537,7 +545,7 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) 
               </div>
             </div>
             <button 
-              onClick={onLogout}
+              onClick={handleLogout}
               className="flex items-center space-x-2 w-full px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
             >
               <LogOut className="w-5 h-5" />
