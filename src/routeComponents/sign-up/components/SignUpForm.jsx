@@ -155,41 +155,54 @@ const SignUpForm = ({ referralCode }) => {
     };
     try {
       const response = await signUpApi(data);
-      toast.success('Account created successfully');
+
+      // Support multiple response shapes: { user, tokens } OR { data: { user, tokens } } OR { data: { data: { user, tokens } } }
+      const payload =
+        (response?.user && response) ||
+        (response?.data?.user && response.data) ||
+        (response?.data?.data?.user && response.data.data) ||
+        response;
+      const userData = payload?.user || payload?.data?.user || null;
+      const tokenData = payload?.tokens || payload?.data?.tokens || null;
+      const accessToken = tokenData?.accessToken || tokenData?.access_token || null;
+      const refreshToken = tokenData?.refreshToken || tokenData?.refresh_token || null;
+
+      if (!userData || !accessToken) {
+        toast.error('Failed to create account');
+        return;
+      }
+
       localStorage.removeItem('onboarding_completed');
-      localStorage.setItem('access_token', response.data.tokens.accessToken);
-      localStorage.setItem('refresh_token', response.data.tokens.refreshToken);
-      localStorage.setItem('role', response.data.user.role);
-      localStorage.setItem('email', response.data.user.email);
-      localStorage.setItem('id', response.data.user.id);
+      localStorage.setItem('access_token', accessToken);
+      if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem('role', userData.role || '');
+      localStorage.setItem('email', userData.email || '');
+      localStorage.setItem('id', userData.id || '');
       try {
         const mappedRole =
-          response.data.user.role === 'admin' ||
-          response.data.user.role === 'manager' ||
-          response.data.user.role === 'super_admin'
+          userData.role === 'admin' ||
+          userData.role === 'manager' ||
+          userData.role === 'super_admin'
             ? 'superadmin'
             : 'vendor';
-        const u = response.data.user;
         const adminUser = {
-          id: response.data.user.id,
-          email: response.data.user.email,
-          name: response.data.user.name || '',
+          id: userData.id,
+          email: userData.email,
+          name: userData.name || '',
           role: mappedRole,
-          avatar: (response.data.user.name || 'U').charAt(0).toUpperCase(),
-          phone: response.data.user.phone || '',
-          cognitoUserId: u.cognitoUserId || '',
-          vendorId: u.vendorId || response.data.user.id,
-          onboardingCompleted: u.onboardingCompleted ?? false,
+          avatar: (userData.name || 'U').charAt(0).toUpperCase(),
+          phone: userData.phone || '',
+          cognitoUserId: userData.cognitoUserId || '',
+          vendorId: userData.vendorId || userData.id,
+          onboardingCompleted: userData.onboardingCompleted ?? false,
         };
-        const adminTokens = {
-          accessToken: response.data.tokens.accessToken,
-          refreshToken: response.data.tokens.refreshToken,
-        };
+        const adminTokens = { accessToken, refreshToken: refreshToken || null };
         localStorage.setItem('qliq-admin-user', JSON.stringify(adminUser));
         localStorage.setItem('qliq-admin-tokens', JSON.stringify(adminTokens));
       } catch {
         // best-effort mapping; ignore if shape differs
       }
+      toast.success('Account created successfully');
       router.push('/onboarding/virtual-assitance');
     } catch (error) {
       if (typeof error === 'object' && error !== null) {
