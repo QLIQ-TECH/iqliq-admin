@@ -12,6 +12,12 @@ import productService from '../../../lib/services/productService';
 import Modal from '../../../components/shared/Modal';
 import { getCustomerFacingPriceParts, formatMoney } from '../../../lib/utils/customerFacingPrice';
 
+const formatStockQuantityDisplay = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return '0';
+  return String(Math.trunc(parsed));
+};
+
 export default function VendorProductsPage() {
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
@@ -198,15 +204,19 @@ export default function VendorProductsPage() {
         );
       }
     },
-    { 
-      key: 'stock_quantity', 
-      label: 'Stock', 
+    {
+      key: 'stock_quantity',
+      label: 'Stock',
       sortable: true,
-      render: (value) => (
-        <span className={value > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-          {value}
-        </span>
-      )
+      render: (value) => {
+        const stockDisplay = formatStockQuantityDisplay(value);
+        const stockNumber = Number(stockDisplay);
+        return (
+          <span className={stockNumber > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+            {stockDisplay}
+          </span>
+        );
+      },
     },
     { 
       key: 'status', 
@@ -540,7 +550,7 @@ function ProductDetailsModal({ open, onClose, product }) {
             </div>
             <div>
               <div className="text-gray-500">Stock</div>
-              <div className="font-medium">{product.stock_quantity}</div>
+              <div className="font-medium">{formatStockQuantityDisplay(product.stock_quantity)}</div>
             </div>
             <div>
               <div className="text-gray-500">Store</div>

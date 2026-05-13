@@ -93,12 +93,13 @@ const PendingOrdersPage = () => {
 
   const getFilteredOrders = () => {
     let filtered = pendingOrders;
+    const searchTerm = filters.search.trim().toLowerCase();
     
     // Filter by search
-    if (filters.search) {
+    if (searchTerm) {
       filtered = filtered.filter(order => 
-        order.orderNumber?.toLowerCase().includes(filters.search.toLowerCase()) ||
-        order.customer?.name?.toLowerCase().includes(filters.search.toLowerCase())
+        order.orderNumber?.toLowerCase().includes(searchTerm) ||
+        order.customer?.name?.toLowerCase().includes(searchTerm)
       );
     }
     
