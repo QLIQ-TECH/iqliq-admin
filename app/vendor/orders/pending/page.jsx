@@ -13,8 +13,7 @@ import {
   CheckCircle, 
   Package,
   Search,
-  Eye,
-  Edit
+  Eye
 } from 'lucide-react';
 import { extractOrdersListFromApiResponse, normalizeVendorOrder } from '../../../../lib/utils/vendorOrderUtils';
 
@@ -35,6 +34,7 @@ const PendingOrdersPage = () => {
     search: '',
     priority: 'all'
   });
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -84,10 +84,15 @@ const PendingOrdersPage = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
+      setUpdatingOrderId(orderId);
       await orderService.updateOrderStatus(orderId, newStatus);
+      alert('Order confirmed successfully');
       await fetchPendingOrders(); // Refresh orders
     } catch (error) {
       console.error('Error updating order status:', error);
+      alert(error?.message || 'Failed to update order status');
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
 
@@ -219,9 +224,10 @@ const PendingOrdersPage = () => {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          handleStatusUpdate(order._id, 'accepted');
+          handleStatusUpdate(order._id, 'confirmed');
         }}
-        className="p-2 text-green-600 hover:bg-green-50 rounded"
+        disabled={updatingOrderId === order._id}
+        className="p-2 text-green-600 hover:bg-green-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
         title="Confirm Order"
       >
         <CheckCircle className="w-4 h-4" />
