@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../lib/api-debug';
 import { authApi, REFRESH_TOKEN_KEY } from '../lib/apiClient';
-import { loginApi } from '../src/api/services/auth.api';
+import { loginApi, signUpApi } from '../src/api/services/auth.api';
 
 const AuthContext = createContext();
 const ACCESS_TOKEN_KEY = 'qliq-admin-access-token';
@@ -313,6 +313,95 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const signup = async (signupData) => {
+    try {
+      setIsLoading(true);
+      const res = await signUpApi(signupData);
+
+      // Support multiple response shapes
+      const payload =
+        (res?.user && res) ||
+        (res?.data?.user && res.data) ||
+        (res?.data?.data?.user && res.data.data) ||
+        res;
+
+      const userData = payload?.user || payload?.data?.user || null;
+      const tokenData = payload?.tokens || payload?.data?.tokens || null;
+      const accessToken =
+        tokenData?.accessToken || tokenData?.access_token || payload?.accessToken || null;
+      const refreshToken =
+        tokenData?.refreshToken || tokenData?.refresh_token || payload?.refreshToken || null;
+
+      if (!userData || !accessToken) {
+        console.error('Unexpected signup response shape:', res);
+        throw new Error('Signup failed: tokens missing from response');
+      }
+
+      // Map roles
+      let frontendRole = 'vendor';
+      if (
+        userData.role === 'admin' ||
+        userData.role === 'manager' ||
+        userData.role === 'super_admin'
+      ) {
+        frontendRole = 'superadmin';
+      }
+
+      const normalizedUserId = userData.id || userData._id || '';
+      const onboardingCompleted =
+        typeof userData.onboardingCompleted === 'boolean'
+          ? userData.onboardingCompleted
+          : userData.vendorId ? true : false;
+
+      const frontendUserData = {
+        id: normalizedUserId,
+        email: userData.email,
+        name: userData.name || '',
+        role: frontendRole,
+        avatar: (userData.name || 'U').charAt(0).toUpperCase(),
+        phone: userData.phone || '',
+        cognitoUserId: userData.cognitoUserId || '',
+        vendorId: userData.vendorId || normalizedUserId,
+        onboardingCompleted,
+      };
+
+      setUser(frontendUserData);
+      setTokens({ accessToken, refreshToken: refreshToken || null });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(USER_KEY, JSON.stringify(frontendUserData));
+        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+        localStorage.setItem(
+          LEGACY_TOKENS_KEY,
+          JSON.stringify({ accessToken, refreshToken: refreshToken || null })
+        );
+        if (refreshToken) {
+          localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+        } else {
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+        }
+
+        localStorage.setItem('access_token', accessToken);
+        if (refreshToken) {
+          localStorage.setItem('refresh_token', refreshToken);
+        } else {
+          localStorage.removeItem('refresh_token');
+        }
+        if (userData.email) localStorage.setItem('email', userData.email);
+        if (normalizedUserId) localStorage.setItem('id', normalizedUserId);
+        if (userData.role) localStorage.setItem('role', userData.role);
+        localStorage.setItem('onboarding_completed', String(onboardingCompleted));
+      }
+
+      return { success: true, user: frontendUserData };
+    } catch (error) {
+      console.error('Signup failed:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       // Call logout API if needed
@@ -364,6 +453,7 @@ export const AuthProvider = ({ children }) => {
     user,
     tokens,
     login,
+    signup,
     logout,
     refreshAccessToken,
     isLoading,
