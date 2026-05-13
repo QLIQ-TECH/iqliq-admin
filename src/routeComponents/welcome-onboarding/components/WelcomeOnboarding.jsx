@@ -30,17 +30,19 @@ const WelcomeOnboardingGrowBusiness = () => {
   });
 
   const onSubmit = async (data) => {
-
     if (data.agree) {
-
-      await postOnboarding(onboardingData);
-      reset();
-
-      localStorage.setItem('onboarding_completed', 'true');
-
       try {
-        const vendorAccessToken = localStorage.getItem('access_token');
-        const vendorRefreshToken = localStorage.getItem('refresh_token');
+        await postOnboarding(onboardingData);
+        reset();
+
+        localStorage.setItem('onboarding_completed', 'true');
+
+        const vendorAccessToken =
+          localStorage.getItem('qliq-admin-access-token') ||
+          localStorage.getItem('access_token');
+        const vendorRefreshToken =
+          localStorage.getItem('qliq-admin-refresh-token') ||
+          localStorage.getItem('refresh_token');
 
         if (vendorAccessToken) {
           localStorage.setItem('qliq-admin-access-token', vendorAccessToken);
@@ -56,7 +58,7 @@ const WelcomeOnboardingGrowBusiness = () => {
         if (vendorRefreshToken) {
           localStorage.setItem('qliq-admin-refresh-token', vendorRefreshToken);
         }
-        
+
         const existingUser = localStorage.getItem('qliq-admin-user');
         if (existingUser) {
           const parsed = JSON.parse(existingUser);
@@ -82,9 +84,15 @@ const WelcomeOnboardingGrowBusiness = () => {
           };
           localStorage.setItem('qliq-admin-user', JSON.stringify(adminUser));
         }
-      } catch {}
-      toast.success('Onboarding successful');
-      redirectToHostApp('/vendor');
+
+        toast.success('Onboarding successful');
+
+        // Use window.location.href to force a full page reload and re-initialize AuthContext
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Onboarding submission failed:', error);
+        toast.error('Failed to complete onboarding. Please try again.');
+      }
     }
   };
   return (

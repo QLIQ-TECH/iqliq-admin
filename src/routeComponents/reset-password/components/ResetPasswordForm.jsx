@@ -30,7 +30,7 @@ const ResetPasswordForm = () => {
             if (response.success) {
                 toast.success("Password reset successful 🎉", response.message || "You can now log in with your new password.");
                 setTimeout(() => {
-                    router.replace("/onboarding/login");
+                    router.replace("/login");
                 }, 1500);
             }
             else {
