@@ -21,7 +21,6 @@ import { useAppToast } from '@/hooks/useAppToast';
 import {
   sendEmailOtp,
   sendWhatsappOtp,
-  signUpApi,
   verifyEmailOtp,
   verifyWhatsappOtp,
   verifyRefferalCode,
@@ -29,7 +28,9 @@ import {
 import Step2Form from './Step2Form';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { VerificationButton } from './VerificationButton';
+import { useAuth } from '../../../../contexts/AuthContext';
 const SignUpForm = ({ referralCode }) => {
+  const { signup } = useAuth();
   const [step, setStep] = useState(1);
   const [step1Data, setStep1Data] = useState({});
   const [otpModal, setOtpModal] = useState({
@@ -154,56 +155,12 @@ const SignUpForm = ({ referralCode }) => {
       nationality: step1Data.nationality ?? '',
     };
     try {
-      const response = await signUpApi(data);
+      const result = await signup(data);
 
-      // Support multiple response shapes: { user, tokens } OR { data: { user, tokens } } OR { data: { data: { user, tokens } } }
-      const payload =
-        (response?.user && response) ||
-        (response?.data?.user && response.data) ||
-        (response?.data?.data?.user && response.data.data) ||
-        response;
-      const userData = payload?.user || payload?.data?.user || null;
-      const tokenData = payload?.tokens || payload?.data?.tokens || null;
-      const accessToken = tokenData?.accessToken || tokenData?.access_token || null;
-      const refreshToken = tokenData?.refreshToken || tokenData?.refresh_token || null;
-
-      if (!userData || !accessToken) {
-        toast.error('Failed to create account');
-        return;
+      if (result.success) {
+        toast.success('Account created successfully');
+        router.push('/onboarding/virtual-assitance');
       }
-
-      localStorage.removeItem('onboarding_completed');
-      localStorage.setItem('access_token', accessToken);
-      if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
-      localStorage.setItem('role', userData.role || '');
-      localStorage.setItem('email', userData.email || '');
-      localStorage.setItem('id', userData.id || '');
-      try {
-        const mappedRole =
-          userData.role === 'admin' ||
-          userData.role === 'manager' ||
-          userData.role === 'super_admin'
-            ? 'superadmin'
-            : 'vendor';
-        const adminUser = {
-          id: userData.id,
-          email: userData.email,
-          name: userData.name || '',
-          role: mappedRole,
-          avatar: (userData.name || 'U').charAt(0).toUpperCase(),
-          phone: userData.phone || '',
-          cognitoUserId: userData.cognitoUserId || '',
-          vendorId: userData.vendorId || userData.id,
-          onboardingCompleted: userData.onboardingCompleted ?? false,
-        };
-        const adminTokens = { accessToken, refreshToken: refreshToken || null };
-        localStorage.setItem('qliq-admin-user', JSON.stringify(adminUser));
-        localStorage.setItem('qliq-admin-tokens', JSON.stringify(adminTokens));
-      } catch {
-        // best-effort mapping; ignore if shape differs
-      }
-      toast.success('Account created successfully');
-      router.push('/onboarding/virtual-assitance');
     } catch (error) {
       if (typeof error === 'object' && error !== null) {
         const axiosErr = error;
