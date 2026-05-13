@@ -19,7 +19,6 @@ export type Category = {
 };
 
 
-// src/types/onboarding.ts
 export type SocialAccount = {
   platform: string;
   username?: string;
@@ -28,7 +27,6 @@ export type SocialAccount = {
 };
 
 export type OnboardingPayload = {
-  authUserId?: string;
   languages?: string[];
   goals?: string[]
   salesChannel?: string[];
