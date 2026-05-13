@@ -152,13 +152,19 @@ export default function VendorSettingsPage() {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
-                  <FormInput
-                    label="Email"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
+                  <div>
+                    <FormInput
+                      label="Email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      disabled
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Email is managed by authentication and can’t be updated from this page.
+                    </p>
+                  </div>
                   <FormInput
                     label="Phone"
                     name="phone"

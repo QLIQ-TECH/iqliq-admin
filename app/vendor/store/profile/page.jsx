@@ -54,6 +54,20 @@ const displayCount = (value) => {
   return 0;
 };
 
+const isValidImageUrl = (value) => {
+  if (!value || typeof value !== 'string') return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  try {
+    const url = new URL(trimmed);
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+    // Accept common image-like URLs, including CDN links with query params.
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Unwrap vendor API payloads (camelCase or snake_case, optional nesting). */
 function extractStoreProfileBody(res) {
   if (!res || typeof res !== 'object') return null;
@@ -274,6 +288,14 @@ export default function StoreProfilePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isValidImageUrl(formData.storeLogo)) {
+      alert('Please enter a valid Store Logo URL (http/https).');
+      return;
+    }
+    if (!isValidImageUrl(formData.storeBanner)) {
+      alert('Please enter a valid Store Banner URL (http/https).');
+      return;
+    }
     const snapshotBeforeSave = { ...formData };
     try {
       setSaving(true);
@@ -387,6 +409,14 @@ export default function StoreProfilePage() {
       alert('Store name is required.');
       return;
     }
+    if (!isValidImageUrl(editStoreData.logo)) {
+      alert('Please enter a valid Store Logo URL (http/https).');
+      return;
+    }
+    if (!isValidImageUrl(editStoreData.banner)) {
+      alert('Please enter a valid Store Banner URL (http/https).');
+      return;
+    }
     try {
       setIsUpdatingStore(true);
       const payload = {
@@ -430,6 +460,14 @@ export default function StoreProfilePage() {
     const name = newStoreData.name?.trim();
     if (!name) {
       alert('Store name is required.');
+      return;
+    }
+    if (!isValidImageUrl(newStoreData.logo)) {
+      alert('Please enter a valid Store Logo URL (http/https).');
+      return;
+    }
+    if (!isValidImageUrl(newStoreData.banner)) {
+      alert('Please enter a valid Store Banner URL (http/https).');
       return;
     }
 
