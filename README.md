@@ -1,7 +1,7 @@
 # QLIQ Admin Panel - Multi-Vendor E-Commerce
 
 A comprehensive admin panel for managing a multi-category, multi-vendor e-commerce platform similar to Amazon, Noon, and Flipkart.
-
+s
 ## 🎯 Overview
 
 This admin panel provides complete management capabilities for:
