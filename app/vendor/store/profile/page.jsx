@@ -145,6 +145,42 @@ function mergeStoreProfileState(prev, mapped) {
   return next;
 }
 
+function extractStoresFromResponse(response) {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data?.data?.stores)) return response.data.data.stores;
+  if (Array.isArray(response?.data?.stores)) return response.data.stores;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.stores)) return response.stores;
+  return [];
+}
+
+function mapStoreRecordToStoreForm(store) {
+  if (!store || typeof store !== 'object') return null;
+  const addr =
+    store.address && typeof store.address === 'object' && !Array.isArray(store.address)
+      ? store.address
+      : {};
+  return {
+    storeName: store.name || '',
+    storeDescription: store.description || '',
+    storeLogo: store.logo || '',
+    storeBanner: store.banner || '',
+    storeUrl: store.storeUrl || store.url || '',
+    address:
+      typeof store.address === 'string'
+        ? store.address
+        : [addr.street, addr.line1].filter(Boolean).join(', '),
+    city: addr.city || '',
+    state: addr.state || '',
+    zipCode: addr.postalCode || addr.zipCode || '',
+    country: addr.country || 'USA',
+    phone: store.phone || '',
+    email: store.email || '',
+    businessHours: { ...DEFAULT_BUSINESS_HOURS },
+    socialMedia: { ...DEFAULT_SOCIAL },
+  };
+}
+
 export default function StoreProfilePage() {
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
@@ -225,19 +261,30 @@ export default function StoreProfilePage() {
     try {
       setLoading(true);
       console.log('🏪 Fetching store profile for vendor:', user?.vendorId || user?.id);
-      
+
+      // Source of truth: vendor's store record from product service.
+      try {
+        const storesResponse = await storeService.getStoresByVendor(user?.vendorId || user?.id, true);
+        const storesData = extractStoresFromResponse(storesResponse).filter((s) => s && typeof s === 'object');
+        if (storesData.length > 0) {
+          const primaryStore = storesData[0];
+          const mappedFromStore = mapStoreRecordToStoreForm(primaryStore);
+          if (mappedFromStore) {
+            setFormData((prev) => mergeStoreProfileState(prev, mappedFromStore));
+            return;
+          }
+        }
+      } catch (storeLoadError) {
+        console.warn('⚠️ Could not load store from product service, falling back to vendor profile API:', storeLoadError?.message);
+      }
+
+      // Fallback to vendor profile endpoint.
       const response = await vendorProfileService.getVendorStoreProfile(user?.vendorId || user?.id);
       console.log('📊 Store profile response:', response);
-
       const profileBody = extractStoreProfileBody(response);
       if (profileBody && Object.keys(profileBody).length > 0) {
         const mapped = mapRemoteToStoreForm(profileBody);
-        if (mapped) {
-          console.log('📋 Setting profile data (normalized):', mapped);
-          setFormData((prev) => mergeStoreProfileState(prev, mapped));
-        }
-      } else {
-        console.log('📋 No profile data found or empty response, using defaults');
+        if (mapped) setFormData((prev) => mergeStoreProfileState(prev, mapped));
       }
     } catch (error) {
       console.error('❌ Error fetching store profile:', error);
@@ -262,20 +309,7 @@ export default function StoreProfilePage() {
       console.log('📊 Vendor stores response:', response);
       
       // Extract store data from various possible response structures
-      let storesData = [];
-      if (Array.isArray(response)) {
-        storesData = response;
-      } else if (response?.data?.data?.stores && Array.isArray(response.data.data.stores)) {
-        storesData = response.data.data.stores;
-      } else if (response?.data?.stores && Array.isArray(response.data.stores)) {
-        storesData = response.data.stores;
-      } else if (response?.data && Array.isArray(response.data)) {
-        storesData = response.data;
-      } else if (response?.data?.stores && Array.isArray(response.data.stores)) {
-        storesData = response.data.stores;
-      } else if (response?.stores && Array.isArray(response.stores)) {
-        storesData = response.stores;
-      }
+      const storesData = extractStoresFromResponse(response);
       
       setStores(Array.isArray(storesData) ? storesData.filter((s) => s && typeof s === 'object') : []);
     } catch (error) {
@@ -300,37 +334,60 @@ export default function StoreProfilePage() {
     try {
       setSaving(true);
       console.log('🏪 Updating store profile:', formData);
-      
-      const payload = {
-        ...formData,
-        store_name: formData.storeName,
-        store_description: formData.storeDescription,
-        store_logo: formData.storeLogo,
-        store_banner: formData.storeBanner,
-        store_url: formData.storeUrl,
-        zip_code: formData.zipCode,
-        business_hours: formData.businessHours,
-        social_media: formData.socialMedia,
+
+      const primaryStore = Array.isArray(stores) && stores.length > 0 ? stores[0] : null;
+      const primaryStoreId = primaryStore?._id || primaryStore?.id;
+      if (!primaryStoreId) {
+        alert('No store found. Please create a store first, then update the profile.');
+        setSaving(false);
+        return;
+      }
+      const storePayload = {
+        name: formData.storeName?.trim() || primaryStore?.name || '',
+        description: formData.storeDescription || undefined,
+        logo: formData.storeLogo || undefined,
+        banner: formData.storeBanner || undefined,
+        storeUrl: formData.storeUrl || undefined,
+        email: formData.email || undefined,
+        phone: formData.phone || undefined,
         address: {
-          street: formData.address,
-          city: formData.city,
-          state: formData.state,
-          postalCode: formData.zipCode,
-          country: formData.country,
+          street: formData.address || undefined,
+          city: formData.city || undefined,
+          state: formData.state || undefined,
+          postalCode: formData.zipCode || undefined,
+          country: formData.country || undefined,
         },
       };
-      const response = await vendorProfileService.updateVendorStoreProfile(payload);
-      console.log('✅ Store profile updated:', response);
 
-      const updatedBody = extractStoreProfileBody(response);
-      if (updatedBody && Object.keys(updatedBody).length > 0) {
-        const mapped = mapRemoteToStoreForm(updatedBody);
-        if (mapped) setFormData(mergeStoreProfileState(snapshotBeforeSave, mapped));
-      } else {
-        setFormData(snapshotBeforeSave);
-        await fetchStoreProfile();
+      await storeService.updateStore(String(primaryStoreId), storePayload);
+
+      // Keep legacy vendor profile API in sync (best effort, non-blocking).
+      try {
+        const profilePayload = {
+          ...formData,
+          store_name: formData.storeName,
+          store_description: formData.storeDescription,
+          store_logo: formData.storeLogo,
+          store_banner: formData.storeBanner,
+          store_url: formData.storeUrl,
+          zip_code: formData.zipCode,
+          business_hours: formData.businessHours,
+          social_media: formData.socialMedia,
+          address: {
+            street: formData.address,
+            city: formData.city,
+            state: formData.state,
+            postalCode: formData.zipCode,
+            country: formData.country,
+          },
+        };
+        await vendorProfileService.updateVendorStoreProfile(profilePayload);
+      } catch (profileSyncError) {
+        console.warn('⚠️ Store profile sync endpoint failed (store saved):', profileSyncError?.message);
       }
 
+      setFormData(snapshotBeforeSave);
+      await Promise.all([fetchVendorStores(), fetchStoreProfile()]);
       alert('Store profile updated successfully!');
     } catch (error) {
       console.error('❌ Error updating store profile:', error);
