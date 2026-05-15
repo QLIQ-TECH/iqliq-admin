@@ -7,6 +7,7 @@ import Sidebar from '../../../components/Sidebar';
 import Header from '../../../components/Header';
 import DataTable from '../../../components/shared/DataTable';
 import Modal from '../../../components/shared/Modal';
+import CreateGigDrawer from '../../../components/createGig/CreateGigDrawer';
 import gigsService from '../../../lib/services/gigsService';
 
 function formatDate(value) {
@@ -181,6 +182,7 @@ export default function VendorGigsPage() {
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isCreateGigDrawerOpen, setIsCreateGigDrawerOpen] = useState(false);
 
   const LIMIT = 10;
 
@@ -328,10 +330,25 @@ export default function VendorGigsPage() {
         />
 
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Gigs Management</h1>
-              <p className="text-gray-600 mt-1">Track gig assignments and payment status</p>
+          <CreateGigDrawer
+            open={isCreateGigDrawerOpen}
+            onClose={() => setIsCreateGigDrawerOpen(false)}
+          />
+
+          <div className="mb-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Gigs Management</h1>
+                <p className="text-gray-600 mt-1">Track gig assignments and payment status</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsCreateGigDrawerOpen(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
+              >
+                + Create Gigs
+              </button>
             </div>
           </div>
 
