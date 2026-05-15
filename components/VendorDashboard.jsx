@@ -246,8 +246,7 @@ const VendorDashboard = () => {
   };
 
   const handleOpenNetworks = () => {
-    // "My Networks" is managed under gigs/campaign workflows for vendors.
-    router.push('/vendor/gigs');
+    router.push('/vendor/iqliqers');
   };
 
   const handleNotificationClick = async (notification) => {

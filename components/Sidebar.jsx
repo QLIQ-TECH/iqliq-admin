@@ -295,7 +295,7 @@ const Sidebar = ({ isOpen, onToggle, userType = 'superadmin', onLogout, user }) 
     },
     {
       icon: Users2,
-      label: 'My Iqliqers',
+      label: 'My IQliqers',
       href: '/vendor/iqliqers',
     },
     { 

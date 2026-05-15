@@ -202,7 +202,7 @@ const SuperAdminDashboard = () => {
 
       // Get recent orders from cart service
       try {
-        const ordersResponse = await fetch(`${cartServiceUrl}/orders/admin/all?limit=10&page=1`, { headers, credentials: 'include' });
+        const ordersResponse = await fetch(`${cartServiceUrl}/orders/all?limit=10&page=1`, { headers, credentials: 'include' });
         if (ordersResponse.ok) {
           const ordersData = await ordersResponse.json();
           if (ordersData.success && ordersData.data) {
