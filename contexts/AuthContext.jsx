@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../lib/api-debug';
 import { authApi, REFRESH_TOKEN_KEY } from '../lib/apiClient';
-import { loginApi } from '../src/api/services/auth.api';
+import { loginApi, signUpApi } from '../src/api/services/auth.api';
 
 const AuthContext = createContext();
 const ACCESS_TOKEN_KEY = 'qliq-admin-access-token';
@@ -63,6 +63,12 @@ export const AuthProvider = ({ children }) => {
         const savedUser = localStorage.getItem(USER_KEY);
         let savedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
 
+        console.log('🔄 [AuthContext] initAuth starting:', {
+          hasUser: !!savedUser,
+          hasToken: !!savedToken,
+          onboardingCompleted: localStorage.getItem('onboarding_completed')
+        });
+
         if (!savedToken) {
           const legacyTokensRaw = localStorage.getItem(LEGACY_TOKENS_KEY);
           if (legacyTokensRaw) {
@@ -89,7 +95,7 @@ export const AuthProvider = ({ children }) => {
         if (savedUser && savedToken) {
           try {
             const userData = JSON.parse(savedUser);
-            
+
             console.log('✅ Session restored successfully:', userData.email);
             setUser(userData);
             setTokens({
@@ -97,12 +103,10 @@ export const AuthProvider = ({ children }) => {
               refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY) || null,
             });
             if (isMounted) setIsLoading(false);
-            
-            // Optionally verify token in background (don't wait for it)
-            // Only clear session if explicitly unauthorized
-            verifyToken(savedToken).catch((err) => {
-              console.log('Background token verification failed:', err);
-            });
+            // Token validity is verified on the next real API call via fetchWithAuthRetry.
+            // A background /profile check is intentionally omitted here because it can
+            // clear a valid onboarding session when the sign-up token (qliqAuth service)
+            // is not accepted by the profile endpoint (auth service).
           } catch (error) {
             console.error('❌ Error parsing saved auth data:', error);
             clearAuthData();
@@ -112,17 +116,35 @@ export const AuthProvider = ({ children }) => {
           const vendorAccess = localStorage.getItem('access_token');
           const vendorRefresh = localStorage.getItem('refresh_token');
           if (vendorAccess) {
-            try {
-              localStorage.setItem(ACCESS_TOKEN_KEY, vendorAccess);
-              if (vendorRefresh) {
-                localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
-              }
-              await verifyToken(vendorAccess);
-              if (isMounted) setIsLoading(false);
-            } catch (e) {
-              console.error('Vendor token adoption failed:', e);
-              if (isMounted) setIsLoading(false);
+            localStorage.setItem(ACCESS_TOKEN_KEY, vendorAccess);
+            if (vendorRefresh) {
+              localStorage.setItem(REFRESH_TOKEN_KEY, vendorRefresh);
             }
+            // Try to build a minimal user object from any stored identity fields
+            const email = localStorage.getItem('email') || '';
+            const id = localStorage.getItem('id') || '';
+            const role = localStorage.getItem('role') || 'vendor';
+            const onboardingDone = localStorage.getItem('onboarding_completed') === 'true';
+            if (email || id) {
+              const fallbackUser = {
+                id,
+                email,
+                name: email,
+                role: role === 'vendor' ? 'vendor' : 'superadmin',
+                avatar: (email || 'U').charAt(0).toUpperCase(),
+                phone: '',
+                cognitoUserId: '',
+                vendorId: id,
+                onboardingCompleted: onboardingDone,
+              };
+              setUser(fallbackUser);
+              setTokens({
+                accessToken: vendorAccess,
+                refreshToken: vendorRefresh || null,
+              });
+              localStorage.setItem(USER_KEY, JSON.stringify(fallbackUser));
+            }
+            if (isMounted) setIsLoading(false);
           } else {
             console.log('❌ No saved session found');
             if (isMounted) setIsLoading(false);
@@ -168,11 +190,11 @@ export const AuthProvider = ({ children }) => {
         email: userData.email,
         name: userData.name,
         role: frontendRole,
-        avatar: userData.name.charAt(0).toUpperCase(),
+        avatar: userData.name ? userData.name.charAt(0).toUpperCase() : 'U',
         phone: userData.phone,
         cognitoUserId: userData.cognitoUserId,
         vendorId: userData.vendorId || normalizedUserId, // Add vendorId field
-        onboardingCompleted: userData.onboardingCompleted ?? onboardingCompletedLocal ?? (userData.vendorId ? true : false),
+        onboardingCompleted: userData.onboardingCompleted || onboardingCompletedLocal || (userData.vendorId ? true : false),
       };
       
       setUser(frontendUserData);
@@ -259,10 +281,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const normalizedUserId = userData.id || userData._id || '';
-      const onboardingCompleted =
-        typeof userData.onboardingCompleted === 'boolean'
-          ? userData.onboardingCompleted
-          : userData.vendorId ? true : false; // If vendor has vendorId, consider onboarding complete
+      const onboardingCompleted = !!(userData.onboardingCompleted || (userData.vendorId ? true : false)); 
 
       const frontendUserData = {
         id: normalizedUserId,
@@ -313,6 +332,92 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const signup = async (signupData) => {
+    try {
+      setIsLoading(true);
+      const res = await signUpApi(signupData);
+
+      // Support multiple response shapes
+      const payload =
+        (res?.user && res) ||
+        (res?.data?.user && res.data) ||
+        (res?.data?.data?.user && res.data.data) ||
+        res;
+
+      const userData = payload?.user || payload?.data?.user || null;
+      const tokenData = payload?.tokens || payload?.data?.tokens || null;
+      const accessToken =
+        tokenData?.accessToken || tokenData?.access_token || payload?.accessToken || null;
+      const refreshToken =
+        tokenData?.refreshToken || tokenData?.refresh_token || payload?.refreshToken || null;
+
+      if (!userData || !accessToken) {
+        console.error('Unexpected signup response shape:', res);
+        throw new Error('Signup failed: tokens missing from response');
+      }
+
+      // Map roles
+      let frontendRole = 'vendor';
+      if (
+        userData.role === 'admin' ||
+        userData.role === 'manager' ||
+        userData.role === 'super_admin'
+      ) {
+        frontendRole = 'superadmin';
+      }
+
+      const normalizedUserId = userData.id || userData._id || '';
+      const onboardingCompleted = !!(userData.onboardingCompleted || (userData.vendorId ? true : false));
+
+      const frontendUserData = {
+        id: normalizedUserId,
+        email: userData.email,
+        name: userData.name || '',
+        role: frontendRole,
+        avatar: (userData.name || 'U').charAt(0).toUpperCase(),
+        phone: userData.phone || '',
+        cognitoUserId: userData.cognitoUserId || '',
+        vendorId: userData.vendorId || normalizedUserId,
+        onboardingCompleted,
+      };
+
+      setUser(frontendUserData);
+      setTokens({ accessToken, refreshToken: refreshToken || null });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(USER_KEY, JSON.stringify(frontendUserData));
+        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+        localStorage.setItem(
+          LEGACY_TOKENS_KEY,
+          JSON.stringify({ accessToken, refreshToken: refreshToken || null })
+        );
+        if (refreshToken) {
+          localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+        } else {
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+        }
+
+        localStorage.setItem('access_token', accessToken);
+        if (refreshToken) {
+          localStorage.setItem('refresh_token', refreshToken);
+        } else {
+          localStorage.removeItem('refresh_token');
+        }
+        if (userData.email) localStorage.setItem('email', userData.email);
+        if (normalizedUserId) localStorage.setItem('id', normalizedUserId);
+        if (userData.role) localStorage.setItem('role', userData.role);
+        localStorage.setItem('onboarding_completed', String(onboardingCompleted));
+      }
+
+      return { success: true, user: frontendUserData };
+    } catch (error) {
+      console.error('Signup failed:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       // Call logout API if needed
@@ -325,7 +430,7 @@ export const AuthProvider = ({ children }) => {
       
       // Redirect to login page
       if (typeof window !== 'undefined') {
-        window.location.href = '/onboarding/login';
+        window.location.href = '/login';
       }
     }
   };
@@ -360,12 +465,26 @@ export const AuthProvider = ({ children }) => {
     return newAccessToken;
   };
 
+  const markOnboardingComplete = () => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, onboardingCompleted: true };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(USER_KEY, JSON.stringify(updated));
+        localStorage.setItem('onboarding_completed', 'true');
+      }
+      return updated;
+    });
+  };
+
   const value = {
     user,
     tokens,
     login,
+    signup,
     logout,
     refreshAccessToken,
+    markOnboardingComplete,
     isLoading,
     isAuthenticated: !!user,
   };

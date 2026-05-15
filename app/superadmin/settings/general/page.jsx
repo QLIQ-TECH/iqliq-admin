@@ -82,7 +82,7 @@ export default function GeneralSettingsPage() {
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <FormInput label="Site Name" name="siteName" value={formData.siteName} onChange={(e) => setFormData({ ...formData, siteName: e.target.value })} />
-                  <FormSelect label="Default Currency" name="defaultCurrency" value={formData.defaultCurrency} onChange={(e) => setFormData({ ...formData, defaultCurrency: e.target.value })} options={[{ value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]} />
+                  <FormSelect label="Default Currency" name="defaultCurrency" value={formData.defaultCurrency} onChange={(e) => setFormData({ ...formData, defaultCurrency: e.target.value })} options={[{ value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }, { value: 'AED', label: 'AED' }]} />
                   <FormSelect label="Default Language" name="defaultLanguage" value={formData.defaultLanguage} onChange={(e) => setFormData({ ...formData, defaultLanguage: e.target.value })} options={[{ value: 'en', label: 'English' }, { value: 'ar', label: 'Arabic' }]} />
                   <FormSelect label="Timezone" name="timezone" value={formData.timezone} onChange={(e) => setFormData({ ...formData, timezone: e.target.value })} options={[{ value: 'America/New_York', label: 'Eastern Time' }, { value: 'America/Los_Angeles', label: 'Pacific Time' }]} />
                 </div>

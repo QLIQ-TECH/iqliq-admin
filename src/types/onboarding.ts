@@ -19,7 +19,6 @@ export type Category = {
 };
 
 
-// src/types/onboarding.ts
 export type SocialAccount = {
   platform: string;
   username?: string;

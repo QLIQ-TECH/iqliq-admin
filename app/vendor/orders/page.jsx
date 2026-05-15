@@ -114,6 +114,7 @@ const VendorOrdersPage = () => {
 
   const getFilteredOrders = () => {
     let filtered = orders;
+    const searchTerm = filters.search.trim().toLowerCase();
     
     // Filter by status
     if (filters.status !== 'all') {
@@ -125,11 +126,11 @@ const VendorOrdersPage = () => {
     }
     
     // Filter by search
-    if (filters.search) {
+    if (searchTerm) {
       filtered = filtered.filter(order => 
-        order.orderNumber?.toLowerCase().includes(filters.search.toLowerCase()) ||
-        order.customer?.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
-        order.customer?.email?.toLowerCase().includes(filters.search.toLowerCase())
+        order.orderNumber?.toLowerCase().includes(searchTerm) ||
+        order.customer?.name?.toLowerCase().includes(searchTerm) ||
+        order.customer?.email?.toLowerCase().includes(searchTerm)
       );
     }
     

@@ -4,6 +4,7 @@ import axios, {  AxiosError,type AxiosInstance,type AxiosRequestConfig,type Axio
 export const GigsBaseURL = process.env.NEXT_PUBLIC_GIGS_SERVICE_URL;
 export const PostsBaseURL = process.env.NEXT_PUBLIC_POSTS_SERVICE_URL;
 export const OnboardingBaseURL = process.env.NEXT_PUBLIC_ONBOARDING_SERVICE_URL;
+export const qliqAuthBaseURL = process.env.NEXT_PUBLIC_QLIQAUTH_SERVICE_URL;
 
 const normalizeAuthServiceUrl = () => {
   const explicitServiceUrl = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
@@ -19,7 +20,16 @@ const normalizeAuthServiceUrl = () => {
 
 export const AuthBaseURL = normalizeAuthServiceUrl();
 export const AmpBaseURL = process.env.NEXT_PUBLIC_AMP_SERVICE_URL;
-export const MessageBaseUrl = process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL;
+const normalizeMessageServiceUrl = () => {
+  const messageServiceUrl = process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL;
+  if (!messageServiceUrl) return undefined;
+
+  // Convert ".../api" style URL to service root so route paths
+  // like "/api/otp/send" are not duplicated.
+  return messageServiceUrl.replace(/\/api\/?$/, '');
+};
+
+export const MessageBaseUrl = normalizeMessageServiceUrl();
 
 
 const serviceBaseUrls = {
@@ -29,6 +39,7 @@ const serviceBaseUrls = {
   posts: PostsBaseURL,
   amp: AmpBaseURL,
   message: MessageBaseUrl,
+  qliqAuth: qliqAuthBaseURL,
 } as const;
 
 
@@ -67,7 +78,11 @@ const createClient = (service: ServiceName): AxiosInstance => {
 
   // Attach token
   client.interceptors.request.use((config) => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const token =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('qliq-admin-access-token') ||
+          localStorage.getItem('access_token')
+        : null;
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -106,7 +121,10 @@ const createClient = (service: ServiceName): AxiosInstance => {
 
         const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
         if (!refreshToken) {
-          if (typeof window !== "undefined") localStorage.clear();
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+          }
           // window.location.href = "/login";
           return Promise.reject(error);
         }
@@ -129,7 +147,10 @@ const createClient = (service: ServiceName): AxiosInstance => {
           const refreshError =
             err instanceof Error ? err : new Error("Token refresh failed");
           processQueue(refreshError, null);
-          if (typeof window !== "undefined") localStorage.clear();
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+          }
           // window.location.href = "/login";
           return Promise.reject(err);
         } finally {

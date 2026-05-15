@@ -37,6 +37,7 @@ const VendorOrderDetailPage = () => {
 
   const normalizeOrder = (raw) => {
     const shippingAddress = raw?.shippingAddress || {};
+    const deliveryAddress = raw?.deliveryAddress || {};
     const items = Array.isArray(raw?.items) ? raw.items : [];
     const normalizedItems = items.map((item) => ({
       ...item,
@@ -49,14 +50,34 @@ const VendorOrderDetailPage = () => {
       quantity: Number(item?.quantity || 0),
     }));
     const computedSubtotal = normalizedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const resolvedShippingCost = Number(
-      raw?.shippingCost ??
-      raw?.shippingMethodCost ??
-      raw?.deliveryCharge ??
-      raw?.deliveryCharges ??
-      raw?.shipping ??
+    const parsedSubtotal = Number(raw?.subtotal ?? computedSubtotal ?? 0);
+    const parsedTax = Number(raw?.tax ?? 0);
+    const parsedTotal = Number(
+      raw?.total ??
+      raw?.totalAmount ??
       0
     );
+
+    const explicitShippingCandidates = [
+      raw?.shippingCost,
+      raw?.shippingMethodCost,
+      raw?.deliveryCharge,
+      raw?.deliveryCharges,
+      raw?.shipping,
+      shippingAddress?.zoneCharge,
+      shippingAddress?.zone?.charge,
+      deliveryAddress?.zoneCharge,
+      deliveryAddress?.zone?.charge,
+    ];
+
+    const explicitShipping = explicitShippingCandidates
+      .map((v) => Number(v))
+      .find((v) => Number.isFinite(v) && v > 0);
+
+    const derivedShipping = parsedTotal - parsedSubtotal - parsedTax;
+    const resolvedShippingCost = Number.isFinite(explicitShipping)
+      ? Number(explicitShipping)
+      : (Number.isFinite(derivedShipping) && derivedShipping > 0 ? derivedShipping : 0);
     return {
       ...raw,
       items: normalizedItems,
@@ -73,10 +94,10 @@ const VendorOrderDetailPage = () => {
         zipCode: shippingAddress.postalCode || shippingAddress.zipCode || '',
         country: shippingAddress.country || '',
       },
-      subtotal: Number(raw?.subtotal ?? computedSubtotal ?? 0),
+      subtotal: parsedSubtotal,
       shippingCost: Number.isFinite(resolvedShippingCost) ? resolvedShippingCost : 0,
-      tax: Number(raw?.tax ?? 0),
-      total: Number(raw?.total ?? raw?.totalAmount ?? (computedSubtotal + (Number.isFinite(resolvedShippingCost) ? resolvedShippingCost : 0) + Number(raw?.tax || 0))),
+      tax: parsedTax,
+      total: Number(raw?.total ?? raw?.totalAmount ?? (computedSubtotal + (Number.isFinite(resolvedShippingCost) ? resolvedShippingCost : 0) + parsedTax)),
     };
   };
 

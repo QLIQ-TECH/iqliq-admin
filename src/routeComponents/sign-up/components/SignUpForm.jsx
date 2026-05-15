@@ -21,7 +21,6 @@ import { useAppToast } from '@/hooks/useAppToast';
 import {
   sendEmailOtp,
   sendWhatsappOtp,
-  signUpApi,
   verifyEmailOtp,
   verifyWhatsappOtp,
   verifyRefferalCode,
@@ -29,7 +28,9 @@ import {
 import Step2Form from './Step2Form';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { VerificationButton } from './VerificationButton';
+import { useAuth } from '../../../../contexts/AuthContext';
 const SignUpForm = ({ referralCode }) => {
+  const { signup } = useAuth();
   const [step, setStep] = useState(1);
   const [step1Data, setStep1Data] = useState({});
   const [otpModal, setOtpModal] = useState({
@@ -154,42 +155,12 @@ const SignUpForm = ({ referralCode }) => {
       nationality: step1Data.nationality ?? '',
     };
     try {
-      const response = await signUpApi(data);
-      toast.success('Account created successfully');
-      localStorage.setItem('access_token', response.data.tokens.accessToken);
-      localStorage.setItem('refresh_token', response.data.tokens.refreshToken);
-      localStorage.setItem('role', response.data.user.role);
-      localStorage.setItem('email', response.data.user.email);
-      localStorage.setItem('id', response.data.user.id);
-      try {
-        const mappedRole =
-          response.data.user.role === 'admin' ||
-          response.data.user.role === 'manager' ||
-          response.data.user.role === 'super_admin'
-            ? 'superadmin'
-            : 'vendor';
-        const u = response.data.user;
-        const adminUser = {
-          id: response.data.user.id,
-          email: response.data.user.email,
-          name: response.data.user.name || '',
-          role: mappedRole,
-          avatar: (response.data.user.name || 'U').charAt(0).toUpperCase(),
-          phone: response.data.user.phone || '',
-          cognitoUserId: u.cognitoUserId || '',
-          vendorId: u.vendorId || response.data.user.id,
-          onboardingCompleted: u.onboardingCompleted ?? false,
-        };
-        const adminTokens = {
-          accessToken: response.data.tokens.accessToken,
-          refreshToken: response.data.tokens.refreshToken,
-        };
-        localStorage.setItem('qliq-admin-user', JSON.stringify(adminUser));
-        localStorage.setItem('qliq-admin-tokens', JSON.stringify(adminTokens));
-      } catch {
-        // best-effort mapping; ignore if shape differs
+      const result = await signup(data);
+
+      if (result.success) {
+        toast.success('Account created successfully');
+        router.push('/onboarding/virtual-assitance');
       }
-      router.push('/onboarding/virtual-assitance');
     } catch (error) {
       if (typeof error === 'object' && error !== null) {
         const axiosErr = error;

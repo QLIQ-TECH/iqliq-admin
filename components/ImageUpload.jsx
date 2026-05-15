@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Upload, X, Package, Image as ImageIcon } from 'lucide-react';
 import s3Service from '../lib/services/s3Service';
 
@@ -17,6 +17,22 @@ export default function ImageUpload({
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [errors, setErrors] = useState([]);
+
+  useEffect(() => {
+    setUploadedImages(Array.isArray(existingImages) ? existingImages : []);
+  }, [existingImages]);
+
+  const resolveImageUrl = (image) => {
+    if (typeof image === 'string') return image;
+    if (!image || typeof image !== 'object') return '';
+    return (
+      image.url ||
+      image.image ||
+      image.src ||
+      image.location ||
+      ''
+    );
+  };
 
   // Handle file upload
   const handleFileUpload = useCallback(async (files) => {
@@ -203,17 +219,25 @@ export default function ImageUpload({
             Uploaded Images ({uploadedImages.length})
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {uploadedImages.map((image, index) => (
-              <div key={`${image.url}-${index}`} className="relative group">
+            {uploadedImages.map((image, index) => {
+              const imageUrl = resolveImageUrl(image);
+              return (
+              <div key={`${imageUrl || 'image'}-${index}`} className="relative group">
                 <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
-                  <img
-                    src={image.url}
-                    alt={image.alt_text || `Image ${index + 1}`}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMiA4QzEwLjg5NTQgOCAxMCA4Ljg5NTQzIDEwIDEwQzEwIDExLjEwNDYgMTAuODk1NCAxMiAxMiAxMkMxMy4xMDQ2IDEyIDE0IDExLjEwNDYgMTQgMTBDMTQgOC44OTU0MyAxMy4xMDQ2IDggMTIgOFoiIGZpbGw9IiM5Q0EzQUYiLz4KPHBhdGggZD0iTTIwLjUgNkg5LjVDOC4xMTkyOSA2IDcgNy4xMTkyOSA3IDguNVYxNS41QzcgMTYuODgwNyA4LjExOTI5IDE4IDkuNSAxOEgyMC41QzIxLjg4MDcgMTggMjMgMTYuODgwNyAyMyAxNS41VjguNUMyMyA3LjExOTI5IDIxLjg4MDcgNiAyMC41IDZaTTIxIDguNVYxMS4yNUwyMC4yNSAxMC41TDE5IDEyLjI1TDE2LjUgOS43NUwxMyAxNC43NUwxMCAxMS43NUw5IDE0LjVWOC41QzkgNy42NzE1NyA5LjY3MTU3IDcgMTAuNSA3SDIwLjVDMjEuMzI4NCA3IDIyIDcuNjcxNTcgMjIgOC41SDIxWiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
-                    }}
-                  />
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={image.alt_text || `Image ${index + 1}`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMiA4QzEwLjg5NTQgOCAxMCA4Ljg5NTQzIDEwIDEwQzEwIDExLjEwNDYgMTAuODk1NCAxMiAxMiAxMkMxMy4xMDQ2IDEyIDE0IDExLjEwNDYgMTQgMTBDMTQgOC44OTU0MyAxMy4xMDQ2IDggMTIgOFoiIGZpbGw9IiM5Q0EzQUYiLz4KPHBhdGggZD0iTTIwLjUgNkg5LjVDOC4xMTkyOSA2IDcgNy4xMTkyOSA3IDguNVYxNS41QzcgMTYuODgwNyA4LjExOTI5IDE4IDkuNSAxOEgyMC41QzIxLjg4MDcgMTggMjMgMTYuODgwNyAyMyAxNS41VjguNUMyMyA3LjExOTI5IDIxLjg4MDcgNiAyMC41IDZaTTIxIDguNVYxMS4yNUwyMC4yNSAxMC41TDE5IDEyLjI1TDE2LjUgOS43NUwxMyAxNC43NUwxMCAxMS43NUw5IDE0LjVWOC41QzkgNy42NzE1NyA5LjY3MTU3IDcgMTAuNSA3SDIwLjVDMjEuMzI4NCA3IDIyIDcuNjcxNTcgMjIgOC41SDIxWiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-gray-400">
+                      <ImageIcon className="h-6 w-6" />
+                    </div>
+                  )}
                 </div>
                 
                 {/* Primary Badge */}
@@ -255,7 +279,8 @@ export default function ImageUpload({
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       )}

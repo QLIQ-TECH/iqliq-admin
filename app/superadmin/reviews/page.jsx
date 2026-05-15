@@ -27,6 +27,8 @@ import reviewService from '../../../lib/services/reviewService';
 import productService from '../../../lib/services/productService';
 import vendorService from '../../../lib/services/vendorService';
 
+const looksLikeId = (value) => typeof value === 'string' && /^[a-f0-9]{24}$/i.test(value.trim());
+
 const ReviewsPage = () => {
   const { user, isLoading } = useAuth();
   const [reviews, setReviews] = useState([]);
@@ -57,6 +59,76 @@ const ReviewsPage = () => {
 
   const getReviewId = (review) => String(review?.id || review?._id || '');
 
+  const fetchUsersDirectory = async () => {
+    const token =
+      (typeof window !== 'undefined' && localStorage.getItem('qliq-admin-access-token')) || '';
+    const authBase = (process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8081/api/auth').replace(/\/$/, '');
+    const candidates = [
+      `${authBase}/users?status=all&limit=1000&page=1`,
+      `${authBase.replace(/\/api\/auth$/, '/api')}/auth/users?status=all&limit=1000&page=1`,
+    ];
+
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!response.ok) continue;
+        const payload = await response.json();
+        const list = Array.isArray(payload?.data?.users)
+          ? payload.data.users
+          : Array.isArray(payload?.users)
+            ? payload.users
+            : Array.isArray(payload?.data)
+              ? payload.data
+              : [];
+        if (list.length) return list;
+      } catch {
+        // Try next candidate.
+      }
+    }
+    return [];
+  };
+
+  const buildUserMap = (users = []) => {
+    const out = new Map();
+    users.forEach((u) => {
+      const id = String(u?.id || u?._id || '').trim();
+      if (!id) return;
+      const firstName = typeof u?.firstName === 'string' ? u.firstName.trim() : '';
+      const lastName = typeof u?.lastName === 'string' ? u.lastName.trim() : '';
+      out.set(id, {
+        name: u?.name || u?.fullName || `${firstName} ${lastName}`.trim() || null,
+        email: u?.email || u?.mail || null,
+        phone: u?.phone || u?.phoneNumber || u?.mobile || null,
+      });
+    });
+    return out;
+  };
+
+  const hydrateReviewDisplay = (review, userMap) => {
+    const customerId = String(review?.userId || '').trim();
+    const vendorId = String(review?.vendorId || '').trim();
+    const customer = userMap.get(customerId);
+    const vendor = userMap.get(vendorId);
+
+    const customerNameNeedsResolve = !review?.customerName || looksLikeId(review.customerName);
+    const vendorNameNeedsResolve = !review?.vendorName || looksLikeId(review.vendorName);
+
+    return {
+      ...review,
+      customerName: customerNameNeedsResolve
+        ? (customer?.name || review?.customerName || customerId || 'Anonymous')
+        : review.customerName,
+      customerEmail: review?.customerEmail || customer?.email || null,
+      customerPhone: review?.customerPhone || customer?.phone || null,
+      vendorName: vendorNameNeedsResolve
+        ? (vendor?.name || review?.vendorName || null)
+        : review.vendorName,
+      vendorEmail: review?.vendorEmail || vendor?.email || null,
+    };
+  };
+
   useEffect(() => {
     if (!isLoading && user) {
       fetchData();
@@ -77,10 +149,13 @@ const ReviewsPage = () => {
 
       if (reviewsResponse.success) {
         const reviewsData = reviewsResponse.data?.reviews || [];
+        const users = await fetchUsersDirectory();
+        const userMap = buildUserMap(users);
+        const hydratedReviews = reviewsData.map((review) => hydrateReviewDisplay(review, userMap));
         console.log('Reviews Data:', reviewsData);
-        setReviews(reviewsData);
-        calculateStats(reviewsData);
-        calculateTopProducts(reviewsData);
+        setReviews(hydratedReviews);
+        calculateStats(hydratedReviews);
+        calculateTopProducts(hydratedReviews);
       } else {
         console.error('Reviews API Error:', reviewsResponse.message);
       }
@@ -636,7 +711,7 @@ const ReviewsPage = () => {
                           </div>
                           <div>
                             <div className="text-sm font-medium text-gray-900">
-                              {review.customerName || review.title || review.userId || 'Anonymous'}
+                              {review.customerName || review.userId || 'Anonymous'}
                             </div>
                             <div className="text-xs text-gray-500">
                               {review.customerEmail || 'Email: N/A'}

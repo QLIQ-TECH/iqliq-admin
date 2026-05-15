@@ -1782,6 +1782,39 @@ export default function AddProductPage() {
                   </div>
                 </div>
 
+                {imageUrls.some((u) => u.trim()) && (
+                  <div className="mt-4">
+                    <h3 className="mb-3 text-sm font-semibold text-slate-800">URL Image Preview</h3>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                      {imageUrls
+                        .map((url) => url.trim())
+                        .filter(Boolean)
+                        .map((url, index) => (
+                          <div key={`${url}-${index}`} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white">
+                            <img
+                              src={url}
+                              alt={`URL image ${index + 1}`}
+                              className="h-24 w-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling;
+                                if (fallback) fallback.classList.remove('hidden');
+                              }}
+                            />
+                            <div className="hidden h-24 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 flex">
+                              Invalid image URL
+                            </div>
+                            {index === 0 && uploadedImages.length === 0 ? (
+                              <span className="absolute left-2 top-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-medium text-white">
+                                Primary
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>
                     Total images:{' '}

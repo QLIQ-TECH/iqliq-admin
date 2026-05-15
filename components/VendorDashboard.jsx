@@ -246,6 +246,7 @@ const VendorDashboard = () => {
   };
 
   const handleOpenNetworks = () => {
+    // Open vendor downline / qliqers page.
     router.push('/vendor/iqliqers');
   };
 

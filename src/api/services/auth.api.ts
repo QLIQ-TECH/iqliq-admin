@@ -4,6 +4,7 @@ import type {
   SignUpRequest,
   SignUpResponse,
 } from '@/types/brand';
+import axios from 'axios';
 import { http } from '../client';
 import type { ResetPasswordRequest, ResetPasswordResponse } from '@/lib/types';
 
@@ -21,15 +22,18 @@ export const loginApi = async (data: LoginRequest): Promise<LoginResponse> => {
 };
 
 export const sendEmailOtp = async (data: { email: string }) => {
-  return http.post('auth', '/api/otp/send-otp', data);
+  return http.post('qliqAuth', '/api/otp/send-otp', data);
 };
 
 export const verifyEmailOtp = async (data: { email: string; otp: number }) => {
-  return http.post('auth', '/api/otp/verify-otp', data);
+  return http.post('qliqAuth', '/api/otp/verify-otp', data);
 };
 
 export const sendWhatsappOtp = async (data: { phone: string }) => {
-  return http.post('message', '/api/otp/send', data);
+  return http.post('message', '/api/otp/send', {
+    ...data,
+    channel: 'whatsapp',
+  });
 };
 
 export const verifyWhatsappOtp = async (data: { phone: string; otp: number }) => {
@@ -37,7 +41,7 @@ export const verifyWhatsappOtp = async (data: { phone: string; otp: number }) =>
 };
 
 export const signUpApi = async ( data: SignUpRequest) => {
-  return http.post<SignUpResponse>('auth', '/api/auth/signup', data);
+  return http.post<SignUpResponse>('qliqAuth', '/api/auth/signup', data);
 };
 
 
