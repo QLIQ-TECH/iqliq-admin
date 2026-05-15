@@ -12,7 +12,9 @@ export const ChooseCompetitorsComponent = () => {
     useEffect(() => {
         let mounted = true;
         const search = searchParams.get('search') || undefined;
-        getCompetitors(search)
+        const id = searchParams.get('id') || undefined;
+        const email = searchParams.get('email') || undefined;
+        getCompetitors(search, id, email)
             .then((res) => {
             if (!mounted)
                 return;

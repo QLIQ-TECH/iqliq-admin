@@ -38,9 +38,11 @@ export const getCategories = async (search?: string) => {
   return http.get<{ data: Category[] }>('onboarding', `/api/vendor-product-category?${params.toString()}`);
 };
 
-export const getCompetitors = async (search?: string) => {
+export const getCompetitors = async (search?: string, id?: string, email?: string) => {
   const params = new URLSearchParams();
   if (search) params.append('search', search);
+  if (id) params.append('id', id);
+  if (email) params.append('email', email);
   const query = params.toString();
   const suffix = query ? `?${query}` : '';
   return http.get<VendorApiResponse>('onboarding', `/api/vendors${suffix}`);
